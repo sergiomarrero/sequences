@@ -41,6 +41,17 @@ export interface Sequence {
   created_at: string;
   updated_at: string;
   steps: SequenceStep[];
+  events: SequenceEvent[];
+}
+
+export interface SequenceEvent {
+  id: string;
+  sequence_id: string;
+  at: string;
+  actor: string;
+  action: string;
+  detail: string | null;
+  step_position: number | null;
 }
 
 export interface SequenceTemplateStep {
@@ -66,6 +77,33 @@ export const STEP_EDITABLE_FIELDS = [
   "body",
   "wait_days",
 ] as const;
+
+export type EventActor = "user" | "sync" | "system";
+
+// Append to a sequence's activity log. Recording what happened must never
+// be the reason an operation fails, so every error here is swallowed: a
+// missing log line is a worse day than a failed send, not the reverse.
+export async function logEvent(
+  sequenceId: string,
+  e: {
+    actor?: EventActor;
+    action: string;
+    detail?: string | null;
+    stepPosition?: number | null;
+  },
+): Promise<void> {
+  try {
+    await supabase().from("crm_sequence_events").insert({
+      sequence_id: sequenceId,
+      actor: e.actor ?? "user",
+      action: e.action,
+      detail: e.detail ? e.detail.slice(0, 2000) : null,
+      step_position: e.stepPosition ?? null,
+    });
+  } catch {
+    // ignored on purpose
+  }
+}
 
 export function hasUnresolvedSlots(text: string): boolean {
   return /\[[^\]]+\]/.test(text);
@@ -127,6 +165,21 @@ export async function refreshHoldState(sequenceId: string): Promise<void> {
   if (!Object.keys(update).length) return;
   const res = await sb.from("crm_sequences").update(update).eq("id", sequenceId);
   if (res.error) throw new Error(res.error.message);
+  if (update.status) {
+    await logEvent(sequenceId, {
+      actor: "system",
+      action: "hold cleared",
+      detail: `slots filled; status ${cur.data.status} -> ${update.status}`,
+      stepPosition: next?.position ?? null,
+    });
+  } else if ("hold_reason" in update && update.hold_reason) {
+    await logEvent(sequenceId, {
+      actor: "system",
+      action: "hold updated",
+      detail: String(update.hold_reason),
+      stepPosition: next?.position ?? null,
+    });
+  }
 }
 
 async function nextUnsentStep(sequenceId: string) {
@@ -140,6 +193,10 @@ async function nextUnsentStep(sequenceId: string) {
   if (res.error) throw new Error(res.error.message);
   return (res.data ?? [])[0] ?? null;
 }
+
+// Newest events first, capped per sequence so one busy card cannot crowd
+// out the others.
+const EVENTS_PER_SEQUENCE = 60;
 
 export async function listSequences(): Promise<{
   sequences: Sequence[];
@@ -163,11 +220,26 @@ export async function listSequences(): Promise<{
 
   const byId = new Map<string, Sequence>();
   for (const s of seqRes.data ?? []) {
-    byId.set(s.id, { ...s, steps: [] });
+    byId.set(s.id, { ...s, steps: [], events: [] });
   }
   for (const st of stepRes.data ?? []) {
     byId.get(st.sequence_id)?.steps.push(st);
   }
+
+  // The log is diagnostic, never load-bearing: if the events table is not
+  // there yet (migration 0010 unrun), the board still works without it.
+  const evRes = await sb
+    .from("crm_sequence_events")
+    .select("*")
+    .order("at", { ascending: false })
+    .limit(1000);
+  if (!evRes.error) {
+    for (const ev of evRes.data ?? []) {
+      const seq = byId.get(ev.sequence_id);
+      if (seq && seq.events.length < EVENTS_PER_SEQUENCE) seq.events.push(ev);
+    }
+  }
+
   return {
     sequences: [...byId.values()],
     templates: tplRes.data ?? [],
@@ -213,9 +285,15 @@ export async function createSequenceFromTemplate(input: {
   const stepIns = await sb.from("crm_sequence_steps").insert(steps).select("*");
   if (stepIns.error) throw new Error(stepIns.error.message);
 
+  await logEvent(ins.data.id, {
+    action: "created",
+    detail: `${steps.length} emails drafted from the template for ${ins.data.email}`,
+  });
+
   return {
     ...ins.data,
     steps: (stepIns.data ?? []).sort((a, b) => a.position - b.position),
+    events: [],
   };
 }
 
@@ -232,6 +310,7 @@ const ACTIONS: Record<string, { from: SequenceStatus[]; to: SequenceStatus }> = 
 export async function applySequenceAction(
   id: string,
   action: string,
+  actor: EventActor = "user",
 ): Promise<Sequence> {
   const sb = supabase();
   const cur = await sb.from("crm_sequences").select("*").eq("id", id).single();
@@ -288,13 +367,21 @@ export async function applySequenceAction(
     .single();
   if (res.error) throw new Error(res.error.message);
 
+  const detail =
+    action === "send_now"
+      ? update.send_now
+        ? "next email queued to send"
+        : `send refused: ${update.hold_reason}`
+      : `status ${cur.data.status} -> ${update.status}`;
+  await logEvent(id, { actor, action, detail });
+
   const steps = await sb
     .from("crm_sequence_steps")
     .select("*")
     .eq("sequence_id", id)
     .order("position", { ascending: true });
   if (steps.error) throw new Error(steps.error.message);
-  return { ...res.data, steps: steps.data ?? [] };
+  return { ...res.data, steps: steps.data ?? [], events: [] };
 }
 
 // Swap an unsent step with its unsent neighbor.
@@ -328,4 +415,10 @@ export async function moveStep(
   if (u2.error) throw new Error(u2.error.message);
   const u3 = await sb.from("crm_sequence_steps").update({ position: b.position }).eq("id", a.id);
   if (u3.error) throw new Error(u3.error.message);
+
+  await logEvent(sequenceId, {
+    action: "reordered",
+    detail: `step ${a.position} moved ${dir} (swapped with step ${b.position})`,
+    stepPosition: b.position,
+  });
 }

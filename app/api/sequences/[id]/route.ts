@@ -3,6 +3,7 @@ import { sequencesCaller } from "@/lib/apiAuth";
 import { supabase } from "@/lib/supabase";
 import {
   applySequenceAction,
+  logEvent,
   SEQUENCE_EDITABLE_FIELDS,
   SEQUENCE_STATUSES,
 } from "@/lib/sequences";
@@ -33,7 +34,11 @@ export async function PATCH(
 
   try {
     if (typeof body.action === "string") {
-      const seq = await applySequenceAction(id, body.action);
+      const seq = await applySequenceAction(
+        id,
+        body.action,
+        caller === "sync" ? "sync" : "user",
+      );
       return NextResponse.json(seq);
     }
 
@@ -87,6 +92,13 @@ export async function PATCH(
       .select("*")
       .single();
     if (res.error) throw new Error(res.error.message);
+    await logEvent(id, {
+      actor: caller === "sync" ? "sync" : "user",
+      action: caller === "sync" ? "run update" : "details edited",
+      detail: Object.entries(update)
+        .map(([k, v]) => `${k}=${v === null ? "(cleared)" : String(v).slice(0, 120)}`)
+        .join("; "),
+    });
     return NextResponse.json(res.data);
   } catch (e) {
     return NextResponse.json(

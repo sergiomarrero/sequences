@@ -1416,3 +1416,61 @@ select.status.s-bounced {
     align-items: center;
   }
 }
+
+/* ---- activity log ---- */
+.sdesk details.seq.log {
+  border-top: 1px dashed var(--line);
+}
+.sdesk .events {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.sdesk .events li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  align-items: baseline;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.sdesk .events li:last-child {
+  border-bottom: none;
+}
+.sdesk .ev-at {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.sdesk .ev-actor {
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.sdesk .ev-actor.a-sync {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.sdesk .ev-actor.a-system {
+  color: var(--info);
+  border-color: var(--info);
+}
+.sdesk .ev-what {
+  flex: 1 1 12rem;
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.sdesk .ev-what b {
+  font-weight: 650;
+}

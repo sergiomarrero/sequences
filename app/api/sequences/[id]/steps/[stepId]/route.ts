@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sequencesCaller } from "@/lib/apiAuth";
 import { supabase } from "@/lib/supabase";
-import { moveStep, refreshHoldState, STEP_EDITABLE_FIELDS } from "@/lib/sequences";
+import {
+  logEvent,
+  moveStep,
+  refreshHoldState,
+  STEP_EDITABLE_FIELDS,
+} from "@/lib/sequences";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -94,6 +99,26 @@ export async function PATCH(
       .select("*")
       .single();
     if (res.error) throw new Error(res.error.message);
+
+    if (update.sent_at) {
+      await logEvent(id, {
+        actor: "sync",
+        action: "sent",
+        detail: `step ${res.data.position} "${res.data.title}" sent as Gmail message ${update.gmail_message_id ?? "(id not recorded)"}`,
+        stepPosition: res.data.position,
+      });
+    } else {
+      const fields = Object.keys(update);
+      await logEvent(id, {
+        actor: caller === "sync" ? "sync" : "user",
+        action: "edited",
+        detail: `step ${res.data.position}: ${fields.join(", ")} changed${
+          fields.includes("wait_days") ? ` (wait now ${update.wait_days} bd)` : ""
+        }`,
+        stepPosition: res.data.position,
+      });
+    }
+
     // an edit may have resolved (or restated) the slots this sequence is held
     // on; keep the hold in step with the text
     await refreshHoldState(id);

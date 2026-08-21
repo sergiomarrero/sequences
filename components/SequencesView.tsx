@@ -3,10 +3,86 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Sequence,
+  SequenceEvent,
   SequenceStatus,
   SequenceStep,
   SequenceTemplateStep,
 } from "@/lib/sequences";
+
+function fmtStamp(v: string): string {
+  const d = new Date(v);
+  const date = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${date} ${time}`;
+}
+
+// Everything that has happened to this sequence, newest first. Diagnostic,
+// not decorative: when a card misbehaves this is the record of what was
+// actually asked of it and what the server did in response.
+function ActivityLog({ seq }: { seq: Sequence }) {
+  const [copied, setCopied] = useState(false);
+  const events: SequenceEvent[] = seq.events ?? [];
+
+  async function copy() {
+    const text = [
+      `Sequence: ${seq.name} <${seq.email}>`,
+      `Status: ${seq.status} · next step ${seq.next_step} · send_now ${seq.send_now}`,
+      seq.hold_reason ? `Hold: ${seq.hold_reason}` : null,
+      `Thread: ${seq.gmail_thread_id ?? "none"}`,
+      "",
+      ...events.map(
+        (e) =>
+          `${fmtStamp(e.at)} [${e.actor}] ${e.action}${e.detail ? `: ${e.detail}` : ""}`,
+      ),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // clipboard blocked (insecure context, permissions): fall back to a
+      // selectable prompt so the text is still recoverable
+      window.prompt("Copy the activity log:", text);
+    }
+  }
+
+  return (
+    <details className="seq log">
+      <summary>
+        <span>Activity log</span>
+        <span className="chip">{events.length} recorded</span>
+      </summary>
+      {events.length === 0 ? (
+        <p className="edit-hint">
+          Nothing recorded yet. Every approve, edit, hold, send, and stop
+          from here on shows up in this list.
+        </p>
+      ) : (
+        <>
+          <ul className="events">
+            {events.map((e) => (
+              <li key={e.id}>
+                <span className="ev-at">{fmtStamp(e.at)}</span>
+                <span className={`ev-actor a-${e.actor}`}>{e.actor}</span>
+                <span className="ev-what">
+                  <b>{e.action}</b>
+                  {e.detail ? ` · ${e.detail}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="actions">
+            <button className="quiet" onClick={copy}>
+              {copied ? "Copied" : "Copy log for a bug report"}
+            </button>
+          </div>
+        </>
+      )}
+    </details>
+  );
+}
 
 function hasSlots(text: string): boolean {
   return /\[[^\]]+\]/.test(text);
@@ -368,8 +444,13 @@ export default function SequencesView() {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error ?? `action failed (${res.status})`);
-      setSequences((prev) => prev.map((s) => (s.id === id ? { ...s, ...j } : s)));
+      // the action response carries no events; keep the ones on screen, then
+      // pull the freshly logged ones in the background
+      setSequences((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, ...j, events: s.events } : s)),
+      );
       setActErr(null);
+      load();
       return j as Sequence;
     } catch (e) {
       setActErr({ id, msg: e instanceof Error ? e.message : "action failed" });
@@ -652,6 +733,8 @@ export default function SequencesView() {
                       </div>
                     )}
                   </details>
+
+                  <ActivityLog seq={seq} />
 
                   <div className="actions">
                     {seq.status === "pending" && (
