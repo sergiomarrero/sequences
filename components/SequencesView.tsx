@@ -260,6 +260,7 @@ export default function SequencesView() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [openCards, setOpenCards] = useState<Set<string>>(new Set());
+  const [tplOpen, setTplOpen] = useState(false);
   const { save, saving, error: saveError } = useSaver();
 
   const load = useCallback(async () => {
@@ -352,6 +353,26 @@ export default function SequencesView() {
         {loading && <div className="loading-bar">Loading…</div>}
         {loadError && <div className="seq-error">{loadError}</div>}
 
+        {ordered.length > 0 && (
+          <div className="seq-listbar">
+            <span>
+              {ordered.length} sequence{ordered.length === 1 ? "" : "s"}
+            </span>
+            <button
+              className="btn quiet"
+              onClick={() =>
+                setOpenCards(
+                  openCards.size
+                    ? new Set()
+                    : new Set(ordered.map((s) => s.id)),
+                )
+              }
+            >
+              {openCards.size ? "Collapse all" : "Expand all"}
+            </button>
+          </div>
+        )}
+
         {ordered.map((seq) => {
           const open = openCards.has(seq.id);
           const sentCount = seq.steps.filter((s) => s.sent_at).length;
@@ -360,6 +381,7 @@ export default function SequencesView() {
               <div className="seq-card-head" onClick={() => toggle(seq.id)}>
                 <div>
                   <div className="seq-name">
+                    <span className="seq-caret">{open ? "▾" : "▸"}</span>
                     {seq.name}
                     {seq.is_test && <span className="seq-test-tag">TEST</span>}
                   </div>
@@ -445,7 +467,18 @@ export default function SequencesView() {
           );
         })}
 
-        <h2 className="seq-zone-title">Default template</h2>
+        <h2
+          className="seq-zone-title seq-zone-toggle"
+          onClick={() => setTplOpen((v) => !v)}
+        >
+          <span className="seq-caret">{tplOpen ? "▾" : "▸"}</span>
+          Default template
+          <span className="seq-zone-hint">
+            {tplOpen ? "collapse" : "tap to view and edit"}
+          </span>
+        </h2>
+        {tplOpen && (
+        <>
         <p className="seq-intro">
           Every new draft starts from this. Edits here apply to future
           sequences only. [Bracketed] slots get personalized per investor
@@ -473,6 +506,8 @@ export default function SequencesView() {
             />
           ))}
         </div>
+        </>
+        )}
       </main>
     </div>
   );
