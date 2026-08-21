@@ -80,6 +80,18 @@ export const STEP_EDITABLE_FIELDS = [
 
 export type EventActor = "user" | "sync" | "system";
 
+// A problem with what was asked, not with the server. Carries the status the
+// API should answer with, so a refused action reads as a refusal (4xx) rather
+// than a crash (500).
+export class SequenceError extends Error {
+  status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = "SequenceError";
+    this.status = status;
+  }
+}
+
 // Append to a sequence's activity log. Recording what happened must never
 // be the reason an operation fails, so every error here is swallowed: a
 // missing log line is a worse day than a failed send, not the reverse.
@@ -340,7 +352,9 @@ export async function applySequenceAction(
   const update: Record<string, unknown> = {};
   if (action === "send_now") {
     if (!["approved", "active", "held"].includes(cur.data.status)) {
-      throw new Error("send_now requires an approved or active sequence");
+      throw new SequenceError(
+        "This sequence is not enrolled yet, so there is nothing to send. Approve it first.",
+      );
     }
     // Queueing a send that the slot gate would refuse is a lie to the user:
     // hold the sequence and say what it needs instead of pretending it is on
@@ -357,9 +371,12 @@ export async function applySequenceAction(
     }
   } else {
     const rule = ACTIONS[action];
-    if (!rule) throw new Error("unknown action");
+    if (!rule) throw new SequenceError(`unknown action "${action}"`);
     if (!rule.from.includes(cur.data.status)) {
-      throw new Error(`cannot ${action} from status ${cur.data.status}`);
+      throw new SequenceError(
+        `cannot ${action} a sequence that is ${cur.data.status}`,
+        409,
+      );
     }
     let to: SequenceStatus = rule.to;
     // A sequence whose introduction already went out resumes mid-thread:
@@ -420,11 +437,11 @@ export async function moveStep(
   if (res.error) throw new Error(res.error.message);
   const steps = res.data ?? [];
   const i = steps.findIndex((s) => s.id === stepId);
-  if (i < 0) throw new Error("step not found");
+  if (i < 0) throw new SequenceError("step not found", 404);
   const j = dir === "up" ? i - 1 : i + 1;
   if (j < 0 || j >= steps.length) return;
   if (steps[i].sent_at || steps[j].sent_at) {
-    throw new Error("sent steps cannot be reordered");
+    throw new SequenceError("sent emails cannot be reordered", 409);
   }
   const a = steps[i];
   const b = steps[j];

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sequencesCaller } from "@/lib/apiAuth";
 import { supabase } from "@/lib/supabase";
 import {
+  SequenceError,
   logEvent,
   moveStep,
   refreshHoldState,
@@ -124,9 +125,11 @@ export async function PATCH(
     await refreshHoldState(id);
     return NextResponse.json(res.data);
   } catch (e) {
+    // a refused action is the caller's problem, not a server fault
+    const status = e instanceof SequenceError ? e.status : 500;
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "update failed" },
-      { status: 500 },
+      { status },
     );
   }
 }

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sequencesCaller } from "@/lib/apiAuth";
-import { createSequenceFromTemplate, listSequences } from "@/lib/sequences";
+import {
+  createSequenceFromTemplate,
+  listSequences,
+  SequenceError,
+} from "@/lib/sequences";
 
 export async function GET(req: NextRequest) {
   const caller = await sequencesCaller(req);
@@ -10,9 +14,11 @@ export async function GET(req: NextRequest) {
   try {
     return NextResponse.json(await listSequences());
   } catch (e) {
+    // a refused action is the caller's problem, not a server fault
+    const status = e instanceof SequenceError ? e.status : 500;
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "query failed" },
-      { status: 500 },
+      { status },
     );
   }
 }
@@ -41,9 +47,10 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json(seq, { status: 201 });
   } catch (e) {
+    const status = e instanceof SequenceError ? e.status : 500;
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "create failed" },
-      { status: 500 },
+      { status },
     );
   }
 }

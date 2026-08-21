@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sequencesCaller } from "@/lib/apiAuth";
 import { supabase } from "@/lib/supabase";
-import { STEP_EDITABLE_FIELDS } from "@/lib/sequences";
+import { SequenceError, STEP_EDITABLE_FIELDS } from "@/lib/sequences";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -56,9 +56,11 @@ export async function PATCH(
     if (res.error) throw new Error(res.error.message);
     return NextResponse.json(res.data);
   } catch (e) {
+    // a refused action is the caller's problem, not a server fault
+    const status = e instanceof SequenceError ? e.status : 500;
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "update failed" },
-      { status: 500 },
+      { status },
     );
   }
 }
