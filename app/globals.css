@@ -1699,3 +1699,60 @@ select.status.s-bounced {
     text-align: left;
   }
 }
+
+/* status picker: the direct way to change where a sequence stands */
+.sdesk .status-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.15rem 0.15rem 0.15rem 0.6rem;
+  background: var(--bg);
+}
+.sdesk .status-pick > span {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.sdesk .status-pick select {
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 0.4rem;
+  max-width: 100%;
+}
+.sdesk .status-pick select:focus {
+  outline: none;
+}
+@media (max-width: 720px) {
+  /* the picker gets its own full-width row above the buttons */
+  .sdesk .status-pick {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+  .sdesk .status-pick select {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.6rem 0.4rem;
+    text-align: right;
+  }
+}
+
+@media (max-width: 720px) {
+  /* every control on a phone gets a real touch target */
+  .sdesk .status-pick,
+  .sdesk .arch-status,
+  .sdesk .arch-search {
+    min-height: 44px;
+  }
+  .sdesk .status-pick select,
+  .sdesk .arch-status {
+    font-size: 16px; /* iOS zooms anything smaller on focus */
+  }
+}

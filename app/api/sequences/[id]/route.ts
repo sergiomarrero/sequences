@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import {
   applySequenceAction,
   logEvent,
+  sequenceHasStarted,
   SEQUENCE_EDITABLE_FIELDS,
   SEQUENCE_STATUSES,
 } from "@/lib/sequences";
@@ -49,13 +50,28 @@ export async function PATCH(
           typeof body[f] === "string" ? body[f].trim() || null : null;
       }
     }
-    if (caller === "sync") {
-      if ("status" in body) {
-        if (!SEQUENCE_STATUSES.includes(body.status)) {
-          return NextResponse.json({ error: "invalid status" }, { status: 400 });
-        }
-        update.status = body.status;
+    // Status is settable by hand from the board, not just by the run: the
+    // one-tap buttons cover the common path, this covers everything else
+    // (marking a reply that came in elsewhere, filing something away,
+    // un-pausing). The one guard that stays: a sequence whose introduction
+    // already went out can never go back to "approved", because the run
+    // would read that as "send the intro" and start the thread twice.
+    if ("status" in body) {
+      if (!SEQUENCE_STATUSES.includes(body.status)) {
+        return NextResponse.json({ error: "invalid status" }, { status: 400 });
       }
+      let next = body.status as (typeof SEQUENCE_STATUSES)[number];
+      if (next === "approved" || next === "pending") {
+        const started = await sequenceHasStarted(id);
+        if (started) next = "active";
+      }
+      update.status = next;
+      if (next !== "held") update.hold_reason = null;
+      if (next !== "approved" && next !== "active" && next !== "held") {
+        update.send_now = false;
+      }
+    }
+    if (caller === "sync") {
       if ("next_step" in body) {
         const n = Number(body.next_step);
         if (!Number.isInteger(n) || n < 1 || n > 99) {

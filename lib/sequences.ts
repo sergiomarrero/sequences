@@ -105,6 +105,27 @@ export async function logEvent(
   }
 }
 
+// Has this sequence's introduction already gone out? Used to keep a started
+// sequence from being pushed back to a pre-send status, which would make the
+// run open a second thread.
+export async function sequenceHasStarted(id: string): Promise<boolean> {
+  const sb = supabase();
+  const seq = await sb
+    .from("crm_sequences")
+    .select("gmail_thread_id")
+    .eq("id", id)
+    .single();
+  if (!seq.error && seq.data?.gmail_thread_id) return true;
+  const sent = await sb
+    .from("crm_sequence_steps")
+    .select("id")
+    .eq("sequence_id", id)
+    .not("sent_at", "is", null)
+    .limit(1);
+  if (sent.error) throw new Error(sent.error.message);
+  return (sent.data ?? []).length > 0;
+}
+
 export function hasUnresolvedSlots(text: string): boolean {
   return /\[[^\]]+\]/.test(text);
 }

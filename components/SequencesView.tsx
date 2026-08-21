@@ -129,14 +129,32 @@ function chipText(seq: Sequence): string {
   }
 }
 
-// Finished states: nothing more will be sent without a human restoring them.
-// These live in the archive section, not the working board.
-const CLOSED_STATUSES: SequenceStatus[] = [
-  "replied",
-  "done",
-  "stopped",
-  "archived",
-];
+// Finished states: the conversation is over. These live in the archive.
+// "stopped" is deliberately not here: a stopped sequence is paused work you
+// may well resume, so it stays on the board where you can see it.
+const CLOSED_STATUSES: SequenceStatus[] = ["replied", "done", "archived"];
+
+const STATUS_LABEL: Record<SequenceStatus, string> = {
+  pending: "Pending review",
+  saved: "Saved for later",
+  approved: "Approved (intro sends next run)",
+  active: "Active",
+  held: "Held (needs input)",
+  stopped: "Stopped",
+  replied: "Replied",
+  done: "Done",
+  archived: "Archived",
+};
+
+// What you can switch a sequence to by hand. A started sequence can never go
+// back to a pre-send status, or the run would open a second thread.
+function statusOptions(seq: Sequence): SequenceStatus[] {
+  const started = seq.steps.some((s) => s.sent_at) || !!seq.gmail_thread_id;
+  const opts: SequenceStatus[] = started
+    ? ["active", "held", "stopped", "replied", "done", "archived"]
+    : ["pending", "saved", "approved", "stopped", "archived"];
+  return opts.includes(seq.status) ? opts : [seq.status, ...opts];
+}
 
 const STATUS_ORDER: SequenceStatus[] = [
   "held",
@@ -546,6 +564,38 @@ export default function SequencesView() {
     }
   }
 
+  // Set a status directly from the card. The one-tap buttons stay for the
+  // common moves; this is the escape hatch for everything else.
+  async function setStatus(seq: Sequence, status: SequenceStatus) {
+    if (status === seq.status) return;
+    try {
+      const res = await fetch(`/api/sequences/${seq.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error ?? `could not set status (${res.status})`);
+      setSequences((prev) =>
+        prev.map((x) => (x.id === seq.id ? { ...x, ...j, events: x.events } : x)),
+      );
+      setActErr(
+        j.status === status
+          ? null
+          : {
+              id: seq.id,
+              msg: `Set to ${STATUS_LABEL[j.status as SequenceStatus]}: this sequence already has a live thread, so it cannot go back to a pre-send status.`,
+            },
+      );
+      load();
+    } catch (e) {
+      setActErr({
+        id: seq.id,
+        msg: e instanceof Error ? e.message : "could not set status",
+      });
+    }
+  }
+
   // mirror an in-progress step edit into the card's state so slot gating,
   // hold notes, and the send button update as the user types
   function applyStepEdit(
@@ -703,6 +753,19 @@ export default function SequencesView() {
                   <ActivityLog seq={seq} />
 
                   <div className="actions">
+                    <label className="status-pick">
+                      <span>Status</span>
+                      <select
+                        value={seq.status}
+                        onChange={(e) => setStatus(seq, e.target.value as SequenceStatus)}
+                      >
+                        {statusOptions(seq).map((st) => (
+                          <option key={st} value={st}>
+                            {STATUS_LABEL[st]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     {seq.status === "pending" && (
                       <>
                         <button className="primary" onClick={() => act(seq.id, "approve")}>
