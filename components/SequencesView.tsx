@@ -113,6 +113,7 @@ function StepEditor({
   onPromote,
   promoted,
   isNext,
+  onEdit,
 }: {
   step: SequenceStep;
   url: string;
@@ -122,6 +123,9 @@ function StepEditor({
   onPromote?: (v: { title: string; subject: string | null; body: string }) => void;
   promoted?: boolean;
   isNext?: boolean;
+  // keep the card's copy of this step current as the user types, so slot
+  // gating and hold notes react immediately instead of after a reload
+  onEdit?: (patch: Partial<SequenceStep>) => void;
 }) {
   const [title, setTitle] = useState(step.title);
   const [subject, setSubject] = useState(step.subject ?? "");
@@ -149,6 +153,7 @@ function StepEditor({
             aria-label={`Title of step ${step.position}`}
             onChange={(e) => {
               setTitle(e.target.value);
+              onEdit?.({ title: e.target.value });
               save(`${step.id}:title`, url, { title: e.target.value });
             }}
           />
@@ -216,6 +221,7 @@ function StepEditor({
             aria-label="Introduction subject line"
             onChange={(e) => {
               setSubject(e.target.value);
+              onEdit?.({ subject: e.target.value });
               save(`${step.id}:subject`, url, { subject: e.target.value });
             }}
           />
@@ -229,6 +235,7 @@ function StepEditor({
         aria-label={`Email body of step ${step.position}`}
         onChange={(e) => {
           setBody(e.target.value);
+          onEdit?.({ body: e.target.value });
           save(`${step.id}:body`, url, { body: e.target.value });
         }}
       />
@@ -419,6 +426,27 @@ export default function SequencesView() {
     }
   }
 
+  // mirror an in-progress step edit into the card's state so slot gating,
+  // hold notes, and the send button update as the user types
+  function applyStepEdit(
+    seqId: string,
+    stepId: string,
+    patch: Partial<SequenceStep>,
+  ) {
+    setSequences((prev) =>
+      prev.map((s) =>
+        s.id === seqId
+          ? {
+              ...s,
+              steps: s.steps.map((st) =>
+                st.id === stepId ? { ...st, ...patch } : st,
+              ),
+            }
+          : s,
+      ),
+    );
+  }
+
   function setOpen(id: string, isOpen: boolean) {
     setOpenCards((prev) => {
       const next = new Set(prev);
@@ -538,8 +566,16 @@ export default function SequencesView() {
                     {seq.gmail_thread_id ? " · thread pinned" : ""}
                   </p>
 
-                  {seq.hold_reason && seq.status === "held" && (
-                    <div className="holdnote">{seq.hold_reason}</div>
+                  {seq.hold_reason &&
+                    seq.status === "held" &&
+                    blockedSlots.length > 0 && (
+                      <div className="holdnote">{seq.hold_reason}</div>
+                    )}
+                  {seq.status === "held" && blockedSlots.length === 0 && (
+                    <div className="readynote">
+                      Filled in. Step {nextPos} is ready; send it now or let
+                      the next morning run take it.
+                    </div>
                   )}
 
                   {seq.background && (
@@ -575,6 +611,7 @@ export default function SequencesView() {
                           st.position === nextPos &&
                           ["approved", "active", "held"].includes(seq.status)
                         }
+                        onEdit={(patch) => applyStepEdit(seq.id, st.id, patch)}
                       />
                     ))}
 

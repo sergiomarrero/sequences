@@ -87,6 +87,48 @@ export function holdReasonFor(position: number, slots: string[]): string {
   return `Step ${position} needs input: ${slots.join("; ")}`.slice(0, 500);
 }
 
+// Editing a step can clear the very slots a sequence is held on. Re-read the
+// next unsent step and lift the hold as soon as nothing is missing, so the
+// board never keeps telling the user to fill in text they already filled in.
+export async function refreshHoldState(sequenceId: string): Promise<void> {
+  const sb = supabase();
+  const cur = await sb
+    .from("crm_sequences")
+    .select("status, hold_reason, gmail_thread_id")
+    .eq("id", sequenceId)
+    .single();
+  if (cur.error) throw new Error(cur.error.message);
+
+  const next = await nextUnsentStep(sequenceId);
+  const slots = next ? unresolvedSlots(next) : [];
+  const update: Record<string, unknown> = {};
+
+  if (slots.length) {
+    if (cur.data.status === "held") {
+      const reason = holdReasonFor(next!.position, slots);
+      if (reason !== cur.data.hold_reason) update.hold_reason = reason;
+    }
+  } else {
+    if (cur.data.hold_reason) update.hold_reason = null;
+    if (cur.data.status === "held") {
+      const sent = await sb
+        .from("crm_sequence_steps")
+        .select("id")
+        .eq("sequence_id", sequenceId)
+        .not("sent_at", "is", null)
+        .limit(1);
+      if (sent.error) throw new Error(sent.error.message);
+      update.status =
+        cur.data.gmail_thread_id || (sent.data ?? []).length
+          ? "active"
+          : "approved";
+    }
+  }
+  if (!Object.keys(update).length) return;
+  const res = await sb.from("crm_sequences").update(update).eq("id", sequenceId);
+  if (res.error) throw new Error(res.error.message);
+}
+
 async function nextUnsentStep(sequenceId: string) {
   const res = await supabase()
     .from("crm_sequence_steps")

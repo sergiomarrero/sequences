@@ -1020,6 +1020,15 @@ select.status.s-bounced {
   border-radius: 0.4rem;
   font-size: 0.85rem;
 }
+.sdesk .readynote {
+  margin: 0.9rem 0 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--good-soft);
+  border: 1px solid var(--good);
+  color: var(--good);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
 .sdesk .bg-block {
   margin: 0.9rem 0 0;
   font-size: 0.88rem;

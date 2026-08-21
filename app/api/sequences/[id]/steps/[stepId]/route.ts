@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sequencesCaller } from "@/lib/apiAuth";
 import { supabase } from "@/lib/supabase";
-import { moveStep, STEP_EDITABLE_FIELDS } from "@/lib/sequences";
+import { moveStep, refreshHoldState, STEP_EDITABLE_FIELDS } from "@/lib/sequences";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -94,6 +94,9 @@ export async function PATCH(
       .select("*")
       .single();
     if (res.error) throw new Error(res.error.message);
+    // an edit may have resolved (or restated) the slots this sequence is held
+    // on; keep the hold in step with the text
+    await refreshHoldState(id);
     return NextResponse.json(res.data);
   } catch (e) {
     return NextResponse.json(
