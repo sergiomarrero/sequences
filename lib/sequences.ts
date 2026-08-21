@@ -78,6 +78,25 @@ export const STEP_EDITABLE_FIELDS = [
   "wait_days",
 ] as const;
 
+// Text pasted out of the Gmail web UI carries Google's click-tracking
+// wrapper around every link. Stored as-is it would show Sergio a wall of
+// "https://www.google.com/url?q=..." in the editor and, worse, send that
+// wrapper on as the visible link text. Keep the destination, drop the
+// wrapper.
+const TRACKING_RE =
+  /https?:\/\/(?:www\.)?google\.com\/url\?[^\s<>"]*/gi;
+
+export function unwrapTrackingUrls(text: string): string {
+  return text.replace(TRACKING_RE, (match) => {
+    try {
+      const target = new URL(match).searchParams.get("q");
+      return target && /^https?:\/\//i.test(target) ? target : match;
+    } catch {
+      return match;
+    }
+  });
+}
+
 export type EventActor = "user" | "sync" | "system";
 
 // A problem with what was asked, not with the server. Carries the status the

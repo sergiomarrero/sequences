@@ -7,6 +7,7 @@ import {
   moveStep,
   refreshHoldState,
   STEP_EDITABLE_FIELDS,
+  unwrapTrackingUrls,
 } from "@/lib/sequences";
 
 const UUID_RE =
@@ -70,9 +71,10 @@ export async function PATCH(
         if (typeof body[f] !== "string" || !body[f].trim()) {
           return NextResponse.json({ error: `${f} cannot be empty` }, { status: 400 });
         }
-        update[f] = body[f];
+        update[f] = unwrapTrackingUrls(body[f]);
       } else {
-        update[f] = typeof body[f] === "string" ? body[f] : null;
+        update[f] =
+          typeof body[f] === "string" ? unwrapTrackingUrls(body[f]) : null;
       }
     }
     if (caller === "sync") {
