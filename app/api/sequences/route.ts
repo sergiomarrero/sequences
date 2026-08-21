@@ -1,0 +1,49 @@
+import { NextRequest, NextResponse } from "next/server";
+import { sequencesCaller } from "@/lib/apiAuth";
+import { createSequenceFromTemplate, listSequences } from "@/lib/sequences";
+
+export async function GET(req: NextRequest) {
+  const caller = await sequencesCaller(req);
+  if (!caller) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  try {
+    return NextResponse.json(await listSequences());
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "query failed" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const caller = await sequencesCaller(req);
+  if (!caller) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const body = await req.json().catch(() => null);
+  if (
+    !body ||
+    typeof body.name !== "string" ||
+    !body.name.trim() ||
+    typeof body.email !== "string" ||
+    !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email.trim())
+  ) {
+    return NextResponse.json({ error: "name and a valid email are required" }, { status: 400 });
+  }
+  try {
+    const seq = await createSequenceFromTemplate({
+      name: body.name,
+      email: body.email,
+      firm: typeof body.firm === "string" ? body.firm : null,
+      background: typeof body.background === "string" ? body.background : null,
+    });
+    return NextResponse.json(seq, { status: 201 });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "create failed" },
+      { status: 500 },
+    );
+  }
+}
