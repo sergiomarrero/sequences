@@ -1829,3 +1829,37 @@ select.status.s-bounced {
     flex: 1 1 100%;
   }
 }
+
+/* a queued send reads as a settled state, not a fresh button */
+.sdesk .send-next.queued,
+.sdesk .send-next.queued:disabled {
+  background: var(--good-soft);
+  border: 1px solid var(--good);
+  color: var(--good);
+  opacity: 1;
+  cursor: default;
+}
+
+/* a sent email is a record, not a draft: green bar, quiet body */
+.sdesk .step.sent {
+  border-left: 3px solid var(--good);
+  padding-left: 0.8rem;
+  margin-left: -0.2rem;
+}
+.sdesk .step.sent .letter {
+  color: var(--ink-soft);
+}
+.sdesk .step.sent .t:disabled {
+  color: var(--ink-soft);
+}
+.sdesk .sentmark {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--good);
+  background: var(--good-soft);
+  border: 1px solid var(--good);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  white-space: nowrap;
+}

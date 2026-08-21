@@ -249,7 +249,7 @@ function StepEditor({
   }, [step.id, step.title, step.subject, step.body, step.wait_days]);
 
   return (
-    <div className="step">
+    <div className={`step ${sent ? "sent" : ""}`}>
       <div className="step-head">
         <h4>
           <span className="n">{step.position}</span>
@@ -433,6 +433,7 @@ export default function SequencesView() {
   const [openCards, setOpenCards] = useState<Set<string>>(new Set());
   const [tplOpen, setTplOpen] = useState(false);
   const [armed, setArmed] = useState<string | null>(null);
+  const [queuing, setQueuing] = useState<string | null>(null);
   const [promoted, setPromoted] = useState<Set<string>>(new Set());
   const [actErr, setActErr] = useState<{ id: string; msg: string } | null>(null);
   // resuming a sequence the investor already answered needs a deliberate ack
@@ -563,7 +564,9 @@ export default function SequencesView() {
     }
     if (armTimer.current) clearTimeout(armTimer.current);
     setArmed(null);
+    setQueuing(seq.id);
     const updated = await act(seq.id, "send_now");
+    setQueuing(null);
     if (updated && !updated.send_now && updated.status === "held") {
       setActErr({
         id: seq.id,
@@ -830,15 +833,23 @@ export default function SequencesView() {
                     {["approved", "active", "held"].includes(seq.status) && (
                       <button
                         type="button"
-                        className="primary send-next"
-                        disabled={blockedSlots.length > 0}
+                        className={`primary send-next ${seq.send_now && !blockedSlots.length ? "queued" : ""}`}
+                        disabled={
+                          blockedSlots.length > 0 ||
+                          queuing === seq.id ||
+                          (seq.send_now && !blockedSlots.length)
+                        }
                         onClick={() => sendNow(seq)}
                       >
                         {blockedSlots.length
                           ? `Fill in step ${nextPos} to send`
-                          : armed === seq.id
-                            ? "Tap again to confirm send"
-                            : "Send next email now"}
+                          : queuing === seq.id
+                            ? "Queuing\u2026"
+                            : seq.send_now
+                              ? `\u2713 Queued \u00b7 step ${nextPos} sends next`
+                              : armed === seq.id
+                                ? "Tap again to confirm send"
+                                : "Send next email now"}
                       </button>
                     )}
                     {seq.status === "pending" && (
