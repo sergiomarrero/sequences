@@ -8,17 +8,50 @@ import type {
   SequenceTemplateStep,
 } from "@/lib/sequences";
 
-const STATUS_LABEL: Record<SequenceStatus, string> = {
-  pending: "Pending review",
-  approved: "Approved · intro sends next run",
-  active: "Active",
-  held: "Needs input · held",
-  replied: "Replied · sequence stopped",
-  done: "All steps sent",
-  stopped: "Stopped",
-  saved: "Saved for later",
-  archived: "Archived",
-};
+function hasSlots(text: string): boolean {
+  return /\[[^\]]+\]/.test(text);
+}
+
+function fmtDate(v: string | null): string {
+  if (!v) return "";
+  const d = new Date(v);
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// The live-state chip on each card, worded like the prototype:
+// "Active · step 2 of 8 sent 08/20".
+function chipText(seq: Sequence): string {
+  const total = seq.steps.length;
+  const sent = seq.steps.filter((s) => s.sent_at);
+  const last = sent.length
+    ? sent
+        .map((s) => s.sent_at as string)
+        .sort()
+        .slice(-1)[0]
+    : null;
+  switch (seq.status) {
+    case "pending":
+      return "Pending review";
+    case "saved":
+      return "Saved for later";
+    case "approved":
+      return "Approved · intro sends next run";
+    case "active":
+      return sent.length
+        ? `Active · step ${sent.length} of ${total} sent ${fmtDate(last)}`
+        : "Active";
+    case "held":
+      return "Needs input · held";
+    case "replied":
+      return "Replied · sequence stopped";
+    case "done":
+      return `Done · all ${total} sent`;
+    case "stopped":
+      return "Stopped";
+    case "archived":
+      return "Archived";
+  }
+}
 
 const STATUS_ORDER: SequenceStatus[] = [
   "held",
@@ -31,16 +64,6 @@ const STATUS_ORDER: SequenceStatus[] = [
   "saved",
   "archived",
 ];
-
-function hasSlots(text: string): boolean {
-  return /\[[^\]]+\]/.test(text);
-}
-
-function fmtDate(v: string | null): string {
-  if (!v) return "";
-  const d = new Date(v);
-  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-}
 
 // Debounced field saver shared by step and template editors.
 function useSaver() {
@@ -87,12 +110,16 @@ function StepEditor({
   canMove,
   onMove,
   save,
+  onPromote,
+  promoted,
 }: {
   step: SequenceStep;
   url: string;
   canMove: boolean;
   onMove: (dir: "up" | "down") => void;
   save: (key: string, url: string, patch: Record<string, unknown>) => void;
+  onPromote?: (v: { title: string; subject: string | null; body: string }) => void;
+  promoted?: boolean;
 }) {
   const [title, setTitle] = useState(step.title);
   const [subject, setSubject] = useState(step.subject ?? "");
@@ -108,78 +135,103 @@ function StepEditor({
   }, [step.id, step.title, step.subject, step.body, step.wait_days]);
 
   return (
-    <div className={`seq-step ${sent ? "sent" : ""}`}>
-      <div className="seq-step-head">
-        <span className="seq-step-n">{step.position}</span>
-        <input
-          className="seq-step-title"
-          value={title}
-          disabled={sent}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            save(`${step.id}:title`, url, { title: e.target.value });
-          }}
-        />
-        {sent ? (
-          <span className="seq-sent-pill">✓ SENT {fmtDate(step.sent_at)}</span>
+    <div className="step">
+      <div className="step-head">
+        <h4>
+          <span className="n">{step.position}</span>
+          <span className="dot">·</span>
+          <input
+            className="t"
+            value={title}
+            disabled={sent}
+            aria-label={`Title of step ${step.position}`}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              save(`${step.id}:title`, url, { title: e.target.value });
+            }}
+          />
+        </h4>
+        {sent && (
+          <span className="sentmark">✓ sent {fmtDate(step.sent_at)}</span>
+        )}
+        {!sent && onPromote && (
+          <span className="starbox">
+            <button
+              type="button"
+              className={promoted ? "on" : ""}
+              title="Make this email the default template for this step"
+              onClick={() =>
+                onPromote({ title, subject: subject || null, body })
+              }
+            >
+              {promoted ? "★" : "☆"}
+            </button>
+          </span>
+        )}
+        {!sent && canMove && (
+          <span className="mv">
+            <button onClick={() => onMove("up")} aria-label="Move earlier">↑</button>
+            <button onClick={() => onMove("down")} aria-label="Move later">↓</button>
+          </span>
+        )}
+        {step.position === 1 ? (
+          <span className="wait">sends on approval</span>
         ) : (
-          <>
-            {canMove && (
-              <span className="seq-move">
-                <button onClick={() => onMove("up")} aria-label="Move earlier">↑</button>
-                <button onClick={() => onMove("down")} aria-label="Move later">↓</button>
-              </span>
-            )}
-            {step.position === 1 ? (
-              <span className="seq-wait">sends on approval</span>
-            ) : (
-              <label className="seq-wait">
-                wait{" "}
-                <input
-                  type="number"
-                  min={1}
-                  max={30}
-                  value={wait}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    setWait(n);
-                    if (Number.isInteger(n) && n >= 1 && n <= 30) {
-                      save(`${step.id}:wait`, url, { wait_days: n });
-                    }
-                  }}
-                />{" "}
-                bd
-              </label>
-            )}
-          </>
+          <label className="wait">
+            wait{" "}
+            <input
+              className="wait-days"
+              type="number"
+              min={1}
+              max={30}
+              step={1}
+              value={wait}
+              disabled={sent}
+              inputMode="numeric"
+              aria-label={`Business days of silence before step ${step.position}`}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setWait(n);
+                if (Number.isInteger(n) && n >= 1 && n <= 30) {
+                  save(`${step.id}:wait`, url, { wait_days: n });
+                }
+              }}
+            />{" "}
+            bd
+          </label>
         )}
       </div>
       {step.position === 1 && (
-        <input
-          className="seq-subject"
-          placeholder="Subject"
-          value={subject}
-          disabled={sent}
-          onChange={(e) => {
-            setSubject(e.target.value);
-            save(`${step.id}:subject`, url, { subject: e.target.value });
-          }}
-        />
+        <p className="subj">
+          <span>Subject</span>{" "}
+          <input
+            className="s"
+            value={subject}
+            disabled={sent}
+            placeholder="Subject"
+            aria-label="Introduction subject line"
+            onChange={(e) => {
+              setSubject(e.target.value);
+              save(`${step.id}:subject`, url, { subject: e.target.value });
+            }}
+          />
+        </p>
       )}
       <textarea
-        className="seq-body"
+        className="letter"
         value={body}
         disabled={sent}
         rows={Math.max(5, body.split("\n").length + 1)}
+        aria-label={`Email body of step ${step.position}`}
         onChange={(e) => {
           setBody(e.target.value);
           save(`${step.id}:body`, url, { body: e.target.value });
         }}
       />
       {!sent && hasSlots(body + (step.position === 1 ? subject : "")) && (
-        <div className="seq-slot-note">
-          Contains [slots]; this step is held until they are replaced with
-          real content.
+        <div className="slot-note">
+          [slots] need real content; this step is held, never sent, until
+          they are filled.
         </div>
       )}
     </div>
@@ -197,19 +249,19 @@ function NewSequenceForm({ onCreated }: { onCreated: (s: Sequence) => void }) {
 
   if (!open) {
     return (
-      <div className="seq-new">
-        <button className="btn primary" onClick={() => setOpen(true)}>
+      <div className="newbar">
+        <button className="primary" onClick={() => setOpen(true)}>
           New sequence
         </button>
-        <span className="seq-new-hint">
+        <span className="new-hint">
           or paste the person into Claude chat for a fully personalized draft
         </span>
       </div>
     );
   }
   return (
-    <div className="seq-card seq-new-form">
-      <div className="seq-form-grid">
+    <div className="card new-form">
+      <div className="form-grid">
         <input placeholder="Name *" value={name} onChange={(e) => setName(e.target.value)} />
         <input placeholder="Email *" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input placeholder="Firm" value={firm} onChange={(e) => setFirm(e.target.value)} />
@@ -220,10 +272,10 @@ function NewSequenceForm({ onCreated }: { onCreated: (s: Sequence) => void }) {
         value={background}
         onChange={(e) => setBackground(e.target.value)}
       />
-      {error && <div className="seq-error">{error}</div>}
-      <div className="seq-actions">
+      {error && <div className="err">{error}</div>}
+      <div className="actions">
         <button
-          className="btn primary"
+          className="primary"
           disabled={busy || !name.trim() || !email.trim()}
           onClick={async () => {
             setBusy(true);
@@ -248,7 +300,7 @@ function NewSequenceForm({ onCreated }: { onCreated: (s: Sequence) => void }) {
         >
           {busy ? "Creating…" : "Create draft"}
         </button>
-        <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
+        <button className="quiet" onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </div>
   );
@@ -261,6 +313,9 @@ export default function SequencesView() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [openCards, setOpenCards] = useState<Set<string>>(new Set());
   const [tplOpen, setTplOpen] = useState(false);
+  const [armed, setArmed] = useState<string | null>(null);
+  const [promoted, setPromoted] = useState<Set<string>>(new Set());
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { save, saving, error: saveError } = useSaver();
 
   const load = useCallback(async () => {
@@ -313,202 +368,315 @@ export default function SequencesView() {
     load();
   }
 
-  function toggle(id: string) {
+  // ☆ star: copy this step's current text over the default template for
+  // the same position, so future drafts start from it.
+  function promote(
+    step: SequenceStep,
+    v: { title: string; subject: string | null; body: string },
+  ) {
+    const tpl = templates.find((t) => t.position === step.position);
+    if (!tpl) return;
+    save(`promote:${tpl.id}`, `/api/sequences/templates/${tpl.id}`, {
+      title: v.title,
+      subject: v.subject,
+      body: v.body,
+    });
+    setTemplates((prev) =>
+      prev.map((t) => (t.id === tpl.id ? { ...t, ...v } : t)),
+    );
+    setPromoted((prev) => new Set(prev).add(step.id));
+  }
+
+  // "Send next email now" arms on the first tap and fires on the second,
+  // exactly like the prototype.
+  function sendNow(seq: Sequence) {
+    if (armed !== seq.id) {
+      setArmed(seq.id);
+      if (armTimer.current) clearTimeout(armTimer.current);
+      armTimer.current = setTimeout(() => setArmed(null), 8000);
+      return;
+    }
+    if (armTimer.current) clearTimeout(armTimer.current);
+    setArmed(null);
+    act(seq.id, "send_now");
+  }
+
+  function setOpen(id: string, isOpen: boolean) {
     setOpenCards((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (isOpen) next.add(id);
+      else next.delete(id);
       return next;
     });
   }
 
   return (
-    <div>
+    <div className="sdesk">
       <header className="app-header">
         <div className="brand">
           Rebel One <span>Sequences</span>
         </div>
-        <div className="seq-savestate">
+        <div className="savestate">
           {saving ? "Saving…" : saveError ? `Save failed: ${saveError}` : "Saved"}
         </div>
       </header>
 
-      <main className="seq-wrap">
-        <p className="seq-intro">
-          Investor sequences: an introduction that starts the thread on
-          approval, then follow-ups on the same thread after each wait.
-          Everything here saves as you type. Claude sends approved emails
-          on the weekday morning run, or immediately with Send next now
-          (also by asking in chat). A reply from the investor stops their
-          sequence automatically.
+      <div className="wrap">
+        <h1>Sequence Desk</h1>
+        <p className="tagline">
+          Investor sequences: review drafts, approve or archive, and track
+          who is where. Cards sort themselves by status; the chip on each
+          card is its live state.
         </p>
+
+        <div className="howto">
+          <p>
+            <strong>Add someone:</strong> paste their name, email, and
+            background into the Claude chat for a fully personalized draft,
+            or use New sequence below. The drafted sequence (introduction
+            plus 7 follow-ups) appears here; the introduction sends when
+            you approve.
+          </p>
+          <p>
+            <strong>Where is everyone?</strong> Each card&apos;s chip says it:
+            &ldquo;Active · step N of 8 sent [date]&rdquo;. Open a card and every
+            sent email carries a green ✓ with its send date.
+          </p>
+          <p>
+            <strong>Edits</strong> to email text, subjects, and wait days
+            save as you type. The ↑↓ arrows reorder unsent steps; the ☆
+            star makes an email the new template default for that step.
+            Decisions take effect at the next weekday morning run, or
+            immediately with Send next email now.
+          </p>
+        </div>
 
         <NewSequenceForm
           onCreated={(s) => {
             setSequences((prev) => [s, ...prev]);
-            setOpenCards((prev) => new Set(prev).add(s.id));
+            setOpen(s.id, true);
           }}
         />
 
-        {loading && <div className="loading-bar">Loading…</div>}
-        {loadError && <div className="seq-error">{loadError}</div>}
+        <section className="zone">
+          <h2>Sequences</h2>
 
-        {ordered.length > 0 && (
-          <div className="seq-listbar">
-            <span>
-              {ordered.length} sequence{ordered.length === 1 ? "" : "s"}
-            </span>
-            <button
-              className="btn quiet"
-              onClick={() =>
-                setOpenCards(
-                  openCards.size
-                    ? new Set()
-                    : new Set(ordered.map((s) => s.id)),
-                )
-              }
-            >
-              {openCards.size ? "Collapse all" : "Expand all"}
-            </button>
-          </div>
-        )}
+          {loading && <div className="loading-bar">Loading…</div>}
+          {loadError && <div className="err">{loadError}</div>}
 
-        {ordered.map((seq) => {
-          const open = openCards.has(seq.id);
-          const sentCount = seq.steps.filter((s) => s.sent_at).length;
-          return (
-            <div className={`seq-card status-${seq.status}`} key={seq.id}>
-              <div className="seq-card-head" onClick={() => toggle(seq.id)}>
-                <div>
-                  <div className="seq-name">
-                    <span className="seq-caret">{open ? "▾" : "▸"}</span>
-                    {seq.name}
-                    {seq.is_test && <span className="seq-test-tag">TEST</span>}
+          {ordered.length > 0 && (
+            <div className="listbar">
+              <span>
+                {ordered.length} sequence{ordered.length === 1 ? "" : "s"}
+              </span>
+              <button
+                className="quiet"
+                onClick={() =>
+                  setOpenCards(
+                    openCards.size
+                      ? new Set()
+                      : new Set(ordered.map((s) => s.id)),
+                  )
+                }
+              >
+                {openCards.size ? "Collapse all" : "Expand all"}
+              </button>
+            </div>
+          )}
+
+          <div className="list">
+            {ordered.map((seq) => {
+              const open = openCards.has(seq.id);
+              const followups = Math.max(0, seq.steps.length - 1);
+              return (
+                <article className={`card status-${seq.status}`} key={seq.id}>
+                  <div className="card-head">
+                    <h3>
+                      {seq.name}
+                      {seq.is_test && <span className="test-tag">SELF-TEST</span>}
+                    </h3>
+                    <span className={`chip status st-${seq.status}`}>
+                      {chipText(seq)}
+                      {seq.send_now ? " · send queued" : ""}
+                    </span>
                   </div>
-                  <div className="seq-meta">
+                  {seq.firm && <p className="firmline">{seq.firm}</p>}
+                  <p className="metaline">
                     {seq.email}
-                    {seq.firm ? ` · ${seq.firm}` : ""}
-                    {sentCount
-                      ? ` · ${sentCount} of ${seq.steps.length} sent`
-                      : ` · ${seq.steps.length} emails drafted`}
-                  </div>
-                </div>
-                <span className={`seq-chip s-${seq.status}`}>
-                  {STATUS_LABEL[seq.status]}
-                  {seq.send_now ? " · send queued" : ""}
-                </span>
-              </div>
+                    {seq.gmail_thread_id ? " · thread pinned" : ""}
+                  </p>
 
-              {seq.hold_reason && seq.status === "held" && (
-                <div className="seq-hold">{seq.hold_reason}</div>
-              )}
+                  {seq.hold_reason && seq.status === "held" && (
+                    <div className="holdnote">{seq.hold_reason}</div>
+                  )}
 
-              {open && (
-                <>
                   {seq.background && (
-                    <div className="seq-bg">
-                      <span>Background</span> {seq.background}
+                    <div className="bg-block">
+                      <span className="lbl">Background used</span>
+                      {seq.background}
                     </div>
                   )}
-                  {seq.steps.map((st) => (
-                    <StepEditor
-                      key={st.id}
-                      step={st}
-                      url={`/api/sequences/${seq.id}/steps/${st.id}`}
-                      canMove={!st.sent_at}
-                      onMove={(dir) => move(seq, st, dir)}
-                      save={save}
-                    />
-                  ))}
-                </>
-              )}
 
-              <div className="seq-actions">
-                {seq.status === "pending" && (
-                  <>
-                    <button className="btn primary" onClick={() => act(seq.id, "approve")}>
-                      Approve &amp; enroll
-                    </button>
-                    <button className="btn" onClick={() => act(seq.id, "save")}>
-                      Save for later
-                    </button>
-                    <button className="btn quiet" onClick={() => act(seq.id, "archive")}>
-                      Archive
-                    </button>
-                  </>
-                )}
-                {["approved", "active", "held"].includes(seq.status) && (
-                  <>
-                    {!seq.send_now && (
-                      <button className="btn primary" onClick={() => act(seq.id, "send_now")}>
-                        Send next now
+                  <details
+                    className="seq"
+                    open={open}
+                    onToggle={(e) =>
+                      setOpen(seq.id, (e.target as HTMLDetailsElement).open)
+                    }
+                  >
+                    <summary>
+                      <span>Read the sequence</span>
+                      <span className="chip">intro + {followups} follow-ups</span>
+                    </summary>
+
+                    {seq.steps.map((st) => (
+                      <StepEditor
+                        key={st.id}
+                        step={st}
+                        url={`/api/sequences/${seq.id}/steps/${st.id}`}
+                        canMove={!st.sent_at}
+                        onMove={(dir) => move(seq, st, dir)}
+                        save={save}
+                        onPromote={(v) => promote(st, v)}
+                        promoted={promoted.has(st.id)}
+                      />
+                    ))}
+
+                    <p className="edit-hint">
+                      Tap any email to edit it in place; edits save. A step
+                      still carrying [slots] is skipped, never sent. The ☆
+                      star marks an email as the new template default for
+                      that step; ↑↓ reorder unsent steps.
+                    </p>
+
+                    {["approved", "active", "held"].includes(seq.status) && (
+                      <div className="send-now">
+                        <button type="button" onClick={() => sendNow(seq)}>
+                          {armed === seq.id
+                            ? "Tap again to confirm send"
+                            : "Send next email now"}
+                        </button>
+                        {seq.send_now && (
+                          <p className="send-note">
+                            Send request recorded. Tell Claude in chat
+                            &ldquo;send the next email now&rdquo; to fire it
+                            immediately; otherwise it goes at the next
+                            morning run.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </details>
+
+                  <div className="actions">
+                    {seq.status === "pending" && (
+                      <>
+                        <button className="primary" onClick={() => act(seq.id, "approve")}>
+                          Approve &amp; enroll
+                        </button>
+                        <button onClick={() => act(seq.id, "save")}>
+                          Save for later
+                        </button>
+                        <button className="quiet" onClick={() => act(seq.id, "archive")}>
+                          Archive
+                        </button>
+                      </>
+                    )}
+                    {seq.status === "held" && (
+                      <button className="primary" onClick={() => act(seq.id, "approve")}>
+                        Resume sending
                       </button>
                     )}
-                    <button className="btn danger" onClick={() => act(seq.id, "stop")}>
-                      Stop sequence
-                    </button>
-                  </>
-                )}
-                {["saved", "stopped", "archived"].includes(seq.status) && (
-                  <button className="btn" onClick={() => act(seq.id, "restore")}>
-                    Back to pending
-                  </button>
-                )}
-                {["replied", "done", "saved", "stopped"].includes(seq.status) && (
-                  <button className="btn quiet" onClick={() => act(seq.id, "archive")}>
-                    Archive
-                  </button>
-                )}
-                <button className="btn quiet" onClick={() => toggle(seq.id)}>
-                  {open ? "Collapse" : "Read the sequence"}
-                </button>
-              </div>
-            </div>
-          );
-        })}
+                    {["approved", "active", "held"].includes(seq.status) && (
+                      <button className="danger" onClick={() => act(seq.id, "stop")}>
+                        Stop sequence
+                      </button>
+                    )}
+                    {["saved", "stopped", "archived"].includes(seq.status) && (
+                      <button onClick={() => act(seq.id, "restore")}>
+                        Back to pending
+                      </button>
+                    )}
+                    {["replied", "done", "saved", "stopped"].includes(seq.status) && (
+                      <button className="quiet" onClick={() => act(seq.id, "archive")}>
+                        Archive
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
 
-        <h2
-          className="seq-zone-title seq-zone-toggle"
-          onClick={() => setTplOpen((v) => !v)}
-        >
-          <span className="seq-caret">{tplOpen ? "▾" : "▸"}</span>
-          Default template
-          <span className="seq-zone-hint">
-            {tplOpen ? "collapse" : "tap to view and edit"}
-          </span>
-        </h2>
-        {tplOpen && (
-        <>
-        <p className="seq-intro">
-          Every new draft starts from this. Edits here apply to future
-          sequences only. [Bracketed] slots get personalized per investor
-          at draft time.
-        </p>
-        <div className="seq-card status-template">
-          {templates.map((t) => (
-            <StepEditor
-              key={t.id}
-              step={{
-                id: t.id,
-                sequence_id: "",
-                position: t.position,
-                title: t.title,
-                subject: t.subject,
-                body: t.body,
-                wait_days: t.wait_days,
-                sent_at: null,
-                gmail_message_id: null,
-              }}
-              url={`/api/sequences/templates/${t.id}`}
-              canMove={false}
-              onMove={() => {}}
-              save={save}
-            />
-          ))}
-        </div>
-        </>
-        )}
-      </main>
+        <section className="zone">
+          <h2>Default template</h2>
+          <div className="list">
+            <article className="card">
+              <div className="card-head">
+                <h3>The 8-email default</h3>
+                <span className="chip status st-template">Template</span>
+              </div>
+              <p className="metaline">
+                Every new sequence is drafted from this. Email 1 is the
+                introduction: it starts the thread and sends on approval;
+                emails 2-8 follow up on that thread. Edit anything here and
+                it becomes the default for future drafts.
+              </p>
+              <div className="bg-block">
+                <span className="lbl">Why this arc</span>
+                Built from current reply-rate research: every follow-up adds
+                something new; why-you personalization comes early, where it
+                lifts replies most; every email has one ask and invites a
+                one-word answer; spacing widens through the sequence (2, 3,
+                3, 4, 4, 5, 6 business days) since early follow-ups drive
+                most replies and late fast ones read as spam.
+              </div>
+
+              <details
+                className="seq"
+                open={tplOpen}
+                onToggle={(e) =>
+                  setTplOpen((e.target as HTMLDetailsElement).open)
+                }
+              >
+                <summary>
+                  <span>Edit the template</span>
+                  <span className="chip">intro + 7 follow-ups · editable</span>
+                </summary>
+                {templates.map((t) => (
+                  <StepEditor
+                    key={t.id}
+                    step={{
+                      id: t.id,
+                      sequence_id: "",
+                      position: t.position,
+                      title: t.title,
+                      subject: t.subject,
+                      body: t.body,
+                      wait_days: t.wait_days,
+                      sent_at: null,
+                      gmail_message_id: null,
+                    }}
+                    url={`/api/sequences/templates/${t.id}`}
+                    canMove={false}
+                    onMove={() => {}}
+                    save={save}
+                  />
+                ))}
+              </details>
+            </article>
+          </div>
+        </section>
+
+        <footer>
+          A sequence stops on its own the moment the investor replies (any
+          inbound message moves the thread to Investors/Replied for your
+          review). Claude reads this page&apos;s data on every weekday run: it
+          enrolls approved cards, sends what is due, honors stops, and
+          refreshes the chips and ✓ marks.
+        </footer>
+      </div>
     </div>
   );
 }
