@@ -9,6 +9,9 @@ import {
   SEQUENCE_STATUSES,
 } from "@/lib/sequences";
 
+// Statuses from which the run will send again.
+const SENDING_STATUSES = ["approved", "active", "held"];
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -61,6 +64,25 @@ export async function PATCH(
         return NextResponse.json({ error: "invalid status" }, { status: 400 });
       }
       let next = body.status as (typeof SEQUENCE_STATUSES)[number];
+      // Restarting a sequence the investor answered is the one change that
+      // can embarrass you in front of a real person, so it takes an explicit
+      // acknowledgement rather than a stray tap.
+      if (SENDING_STATUSES.includes(next) && !body.acknowledge_reply) {
+        const cur = await supabase()
+          .from("crm_sequences")
+          .select("status")
+          .eq("id", id)
+          .single();
+        if (!cur.error && cur.data?.status === "replied") {
+          return NextResponse.json(
+            {
+              error:
+                "This sequence was replied to. Confirm you have read the reply before resuming it.",
+            },
+            { status: 409 },
+          );
+        }
+      }
       if (next === "approved" || next === "pending") {
         const started = await sequenceHasStarted(id);
         if (started) next = "active";
@@ -108,6 +130,13 @@ export async function PATCH(
       .select("*")
       .single();
     if (res.error) throw new Error(res.error.message);
+    if (body.acknowledge_reply && update.status) {
+      await logEvent(id, {
+        actor: caller === "sync" ? "sync" : "user",
+        action: "reply acknowledged",
+        detail: `resumed a replied sequence as ${update.status}`,
+      });
+    }
     await logEvent(id, {
       actor: caller === "sync" ? "sync" : "user",
       action: caller === "sync" ? "run update" : "details edited",

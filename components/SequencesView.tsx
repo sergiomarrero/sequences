@@ -156,6 +156,11 @@ function statusOptions(seq: Sequence): SequenceStatus[] {
   return opts.includes(seq.status) ? opts : [seq.status, ...opts];
 }
 
+// Statuses that let the run send again. Moving a replied sequence into one
+// of these puts another automated email in front of someone who wrote back,
+// so it is gated behind an explicit acknowledgement.
+const SENDING_STATUSES: SequenceStatus[] = ["approved", "active", "held"];
+
 const STATUS_ORDER: SequenceStatus[] = [
   "held",
   "active",
@@ -430,6 +435,9 @@ export default function SequencesView() {
   const [armed, setArmed] = useState<string | null>(null);
   const [promoted, setPromoted] = useState<Set<string>>(new Set());
   const [actErr, setActErr] = useState<{ id: string; msg: string } | null>(null);
+  // resuming a sequence the investor already answered needs a deliberate ack
+  const [ackFor, setAckFor] = useState<{ id: string; target: SequenceStatus } | null>(null);
+  const [ackChecked, setAckChecked] = useState(false);
   const [archOpen, setArchOpen] = useState(false);
   const [archQuery, setArchQuery] = useState("");
   const [archStatus, setArchStatus] = useState<"all" | SequenceStatus>("all");
@@ -566,19 +574,36 @@ export default function SequencesView() {
 
   // Set a status directly from the card. The one-tap buttons stay for the
   // common moves; this is the escape hatch for everything else.
-  async function setStatus(seq: Sequence, status: SequenceStatus) {
+  async function setStatus(
+    seq: Sequence,
+    status: SequenceStatus,
+    acknowledgeReply = false,
+  ) {
     if (status === seq.status) return;
+    // they answered: make the user say so out loud before more mail goes out
+    if (
+      seq.status === "replied" &&
+      SENDING_STATUSES.includes(status) &&
+      !acknowledgeReply
+    ) {
+      setAckChecked(false);
+      setAckFor({ id: seq.id, target: status });
+      return;
+    }
     try {
       const res = await fetch(`/api/sequences/${seq.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(
+          acknowledgeReply ? { status, acknowledge_reply: true } : { status },
+        ),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error ?? `could not set status (${res.status})`);
       setSequences((prev) =>
         prev.map((x) => (x.id === seq.id ? { ...x, ...j, events: x.events } : x)),
       );
+      setAckFor(null);
       setActErr(
         j.status === status
           ? null
@@ -663,6 +688,71 @@ export default function SequencesView() {
                     {seq.gmail_thread_id ? " · thread pinned" : ""}
                   </p>
 
+                  {seq.status === "replied" && (
+                    <div className="repliednote">
+                      <span className="rn-flag">Replied</span>
+                      <div>
+                        <b>{seq.name} wrote back.</b> This sequence stopped
+                        itself and will not send anything else.
+                        {seq.gmail_thread_id && (
+                          <>
+                            {" "}
+                            <a
+                              href={`https://mail.google.com/mail/u/0/#all/${seq.gmail_thread_id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Read the reply in Gmail
+                            </a>
+                            .
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {ackFor?.id === seq.id && (
+                    <div className="ackgate">
+                      <p>
+                        <b>Hold on: {seq.name} already replied.</b> Setting
+                        this back to{" "}
+                        {STATUS_LABEL[ackFor.target].toLowerCase()} lets the
+                        run put more automated follow-ups in a thread they
+                        have already answered.
+                      </p>
+                      <label className="ack-check">
+                        <input
+                          type="checkbox"
+                          checked={ackChecked}
+                          onChange={(e) => setAckChecked(e.target.checked)}
+                        />
+                        <span>
+                          I have read their reply and still want this
+                          sequence to keep sending.
+                        </span>
+                      </label>
+                      <div className="actions">
+                        <button
+                          className="danger"
+                          disabled={!ackChecked}
+                          onClick={() => setStatus(seq, ackFor.target, true)}
+                        >
+                          Resume anyway
+                        </button>
+                        <button
+                          className="quiet"
+                          onClick={() => {
+                            setAckFor(null);
+                            setAckChecked(false);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {seq.hold_reason &&
                     seq.status === "held" &&
                     blockedSlots.length > 0 && (
@@ -719,35 +809,6 @@ export default function SequencesView() {
                       that step; ↑↓ reorder unsent steps.
                     </p>
 
-                    {["approved", "active", "held"].includes(seq.status) && (
-                      <div className="send-now">
-                        <button
-                          type="button"
-                          disabled={blockedSlots.length > 0}
-                          onClick={() => sendNow(seq)}
-                        >
-                          {blockedSlots.length
-                            ? `Fill in step ${nextPos} to send`
-                            : armed === seq.id
-                              ? "Tap again to confirm send"
-                              : "Send next email now"}
-                        </button>
-                        {blockedSlots.length > 0 && (
-                          <p className="send-note">
-                            Step {nextPos} still needs {blockedSlots.length}{" "}
-                            {blockedSlots.length === 1 ? "answer" : "answers"}:{" "}
-                            {blockedSlots.join(" · ")}. Nothing sends until
-                            you replace that text.
-                          </p>
-                        )}
-                        {seq.send_now && !blockedSlots.length && (
-                          <p className="send-note">
-                            Queued. Claude sends it on the next weekday
-                            morning run, or right away if you ask in chat.
-                          </p>
-                        )}
-                      </div>
-                    )}
                   </details>
 
                   <ActivityLog seq={seq} />
@@ -766,6 +827,20 @@ export default function SequencesView() {
                         ))}
                       </select>
                     </label>
+                    {["approved", "active", "held"].includes(seq.status) && (
+                      <button
+                        type="button"
+                        className="primary send-next"
+                        disabled={blockedSlots.length > 0}
+                        onClick={() => sendNow(seq)}
+                      >
+                        {blockedSlots.length
+                          ? `Fill in step ${nextPos} to send`
+                          : armed === seq.id
+                            ? "Tap again to confirm send"
+                            : "Send next email now"}
+                      </button>
+                    )}
                     {seq.status === "pending" && (
                       <>
                         <button className="primary" onClick={() => act(seq.id, "approve")}>
@@ -805,6 +880,21 @@ export default function SequencesView() {
                       </button>
                     )}
                   </div>
+                  {["approved", "active", "held"].includes(seq.status) &&
+                    blockedSlots.length > 0 && (
+                      <p className="send-note">
+                        Step {nextPos} still needs {blockedSlots.length}{" "}
+                        {blockedSlots.length === 1 ? "answer" : "answers"}:{" "}
+                        {blockedSlots.join(" · ")}. Nothing sends until you
+                        replace that text.
+                      </p>
+                    )}
+                  {seq.send_now && !blockedSlots.length && (
+                    <p className="send-note">
+                      Queued. Claude sends it on the next weekday morning
+                      run, or right away if you ask in chat.
+                    </p>
+                  )}
                   {actErr && actErr.id === seq.id && (
                     <div className="err">{actErr.msg}</div>
                   )}
