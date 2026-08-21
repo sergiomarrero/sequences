@@ -363,8 +363,10 @@ export default function SequencesView() {
       if (!res.ok) throw new Error(j?.error ?? `action failed (${res.status})`);
       setSequences((prev) => prev.map((s) => (s.id === id ? { ...s, ...j } : s)));
       setActErr(null);
+      return j as Sequence;
     } catch (e) {
       setActErr({ id, msg: e instanceof Error ? e.message : "action failed" });
+      return null;
     }
   }
 
@@ -397,8 +399,9 @@ export default function SequencesView() {
   }
 
   // "Send next email now" arms on the first tap and fires on the second,
-  // exactly like the prototype.
-  function sendNow(seq: Sequence) {
+  // exactly like the prototype. The server refuses to queue a send whose
+  // next email still carries [slots]; say so plainly when that happens.
+  async function sendNow(seq: Sequence) {
     if (armed !== seq.id) {
       setArmed(seq.id);
       if (armTimer.current) clearTimeout(armTimer.current);
@@ -407,7 +410,13 @@ export default function SequencesView() {
     }
     if (armTimer.current) clearTimeout(armTimer.current);
     setArmed(null);
-    act(seq.id, "send_now");
+    const updated = await act(seq.id, "send_now");
+    if (updated && !updated.send_now && updated.status === "held") {
+      setActErr({
+        id: seq.id,
+        msg: `Not queued. ${updated.hold_reason ?? "The next email still needs input."} Fill that in above, then send.`,
+      });
+    }
   }
 
   function setOpen(id: string, isOpen: boolean) {
@@ -498,10 +507,19 @@ export default function SequencesView() {
               const open = openCards.has(seq.id);
               const followups = Math.max(0, seq.steps.length - 1);
               const started = seq.steps.some((s) => s.sent_at);
-              const nextPos = seq.steps
+              const nextStep = [...seq.steps]
                 .filter((s) => !s.sent_at)
-                .map((s) => s.position)
-                .sort((a, b) => a - b)[0];
+                .sort((a, b) => a.position - b.position)[0];
+              const nextPos = nextStep?.position;
+              // the next email cannot go out while it still carries [slots]
+              const blockedSlots = nextStep
+                ? (
+                    (nextStep.position === 1
+                      ? `${nextStep.subject ?? ""}\n${nextStep.body}`
+                      : nextStep.body
+                    ).match(/\[[^\]]+\]/g) ?? []
+                  )
+                : [];
               return (
                 <article className={`card status-${seq.status}`} key={seq.id}>
                   <div className="card-head">
@@ -569,17 +587,29 @@ export default function SequencesView() {
 
                     {["approved", "active", "held"].includes(seq.status) && (
                       <div className="send-now">
-                        <button type="button" onClick={() => sendNow(seq)}>
-                          {armed === seq.id
-                            ? "Tap again to confirm send"
-                            : "Send next email now"}
+                        <button
+                          type="button"
+                          disabled={blockedSlots.length > 0}
+                          onClick={() => sendNow(seq)}
+                        >
+                          {blockedSlots.length
+                            ? `Fill in step ${nextPos} to send`
+                            : armed === seq.id
+                              ? "Tap again to confirm send"
+                              : "Send next email now"}
                         </button>
-                        {seq.send_now && (
+                        {blockedSlots.length > 0 && (
                           <p className="send-note">
-                            Send request recorded. Tell Claude in chat
-                            &ldquo;send the next email now&rdquo; to fire it
-                            immediately; otherwise it goes at the next
-                            morning run.
+                            Step {nextPos} still needs {blockedSlots.length}{" "}
+                            {blockedSlots.length === 1 ? "answer" : "answers"}:{" "}
+                            {blockedSlots.join(" · ")}. Nothing sends until
+                            you replace that text.
+                          </p>
+                        )}
+                        {seq.send_now && !blockedSlots.length && (
+                          <p className="send-note">
+                            Queued. Claude sends it on the next weekday
+                            morning run, or right away if you ask in chat.
                           </p>
                         )}
                       </div>

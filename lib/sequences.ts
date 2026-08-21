@@ -71,6 +71,34 @@ export function hasUnresolvedSlots(text: string): boolean {
   return /\[[^\]]+\]/.test(text);
 }
 
+// The [bracketed] placeholders still sitting in a step's sendable text.
+// Position 1 carries a subject line, so its slots count too.
+export function unresolvedSlots(step: {
+  position: number;
+  subject: string | null;
+  body: string;
+}): string[] {
+  const text =
+    step.position === 1 ? `${step.subject ?? ""}\n${step.body}` : step.body;
+  return text.match(/\[[^\]]+\]/g) ?? [];
+}
+
+export function holdReasonFor(position: number, slots: string[]): string {
+  return `Step ${position} needs input: ${slots.join("; ")}`.slice(0, 500);
+}
+
+async function nextUnsentStep(sequenceId: string) {
+  const res = await supabase()
+    .from("crm_sequence_steps")
+    .select("position, subject, body")
+    .eq("sequence_id", sequenceId)
+    .is("sent_at", null)
+    .order("position", { ascending: true })
+    .limit(1);
+  if (res.error) throw new Error(res.error.message);
+  return (res.data ?? [])[0] ?? null;
+}
+
 export async function listSequences(): Promise<{
   sequences: Sequence[];
   templates: SequenceTemplateStep[];
@@ -172,7 +200,19 @@ export async function applySequenceAction(
     if (!["approved", "active", "held"].includes(cur.data.status)) {
       throw new Error("send_now requires an approved or active sequence");
     }
-    update.send_now = true;
+    // Queueing a send that the slot gate would refuse is a lie to the user:
+    // hold the sequence and say what it needs instead of pretending it is on
+    // its way. Same rule the mailman applies at send time.
+    const nextStep = await nextUnsentStep(id);
+    const slots = nextStep ? unresolvedSlots(nextStep) : [];
+    if (nextStep && slots.length) {
+      update.send_now = false;
+      update.status = "held";
+      update.hold_reason = holdReasonFor(nextStep.position, slots);
+    } else {
+      update.send_now = true;
+      if (cur.data.status === "held") update.hold_reason = null;
+    }
   } else {
     const rule = ACTIONS[action];
     if (!rule) throw new Error("unknown action");
