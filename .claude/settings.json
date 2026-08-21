@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Gmail__send_message",
+      "mcp__Gmail__reply"
+    ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Sending and replying to email through the Gmail tools from sergio@rbl1.com is the expected work of this project. The investor sequence runs unattended on a weekday schedule and cannot pause for approval."
+    ]
+  }
+}
