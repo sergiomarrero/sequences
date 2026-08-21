@@ -112,6 +112,7 @@ function StepEditor({
   save,
   onPromote,
   promoted,
+  isNext,
 }: {
   step: SequenceStep;
   url: string;
@@ -120,6 +121,7 @@ function StepEditor({
   save: (key: string, url: string, patch: Record<string, unknown>) => void;
   onPromote?: (v: { title: string; subject: string | null; body: string }) => void;
   promoted?: boolean;
+  isNext?: boolean;
 }) {
   const [title, setTitle] = useState(step.title);
   const [subject, setSubject] = useState(step.subject ?? "");
@@ -154,6 +156,7 @@ function StepEditor({
         {sent && (
           <span className="sentmark">✓ sent {fmtDate(step.sent_at)}</span>
         )}
+        {!sent && isNext && <span className="next-pill">next up</span>}
         {!sent && onPromote && (
           <span className="starbox">
             <button
@@ -174,9 +177,10 @@ function StepEditor({
             <button onClick={() => onMove("down")} aria-label="Move later">↓</button>
           </span>
         )}
-        {step.position === 1 ? (
+        {!sent && step.position === 1 && (
           <span className="wait">sends on approval</span>
-        ) : (
+        )}
+        {!sent && step.position !== 1 && (
           <label className="wait">
             wait{" "}
             <input
@@ -315,6 +319,7 @@ export default function SequencesView() {
   const [tplOpen, setTplOpen] = useState(false);
   const [armed, setArmed] = useState<string | null>(null);
   const [promoted, setPromoted] = useState<Set<string>>(new Set());
+  const [actErr, setActErr] = useState<{ id: string; msg: string } | null>(null);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { save, saving, error: saveError } = useSaver();
 
@@ -348,14 +353,18 @@ export default function SequencesView() {
   );
 
   async function act(id: string, action: string) {
-    const res = await fetch(`/api/sequences/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
-    const j = await res.json();
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/sequences/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error ?? `action failed (${res.status})`);
       setSequences((prev) => prev.map((s) => (s.id === id ? { ...s, ...j } : s)));
+      setActErr(null);
+    } catch (e) {
+      setActErr({ id, msg: e instanceof Error ? e.message : "action failed" });
     }
   }
 
@@ -488,6 +497,11 @@ export default function SequencesView() {
             {ordered.map((seq) => {
               const open = openCards.has(seq.id);
               const followups = Math.max(0, seq.steps.length - 1);
+              const started = seq.steps.some((s) => s.sent_at);
+              const nextPos = seq.steps
+                .filter((s) => !s.sent_at)
+                .map((s) => s.position)
+                .sort((a, b) => a - b)[0];
               return (
                 <article className={`card status-${seq.status}`} key={seq.id}>
                   <div className="card-head">
@@ -539,6 +553,10 @@ export default function SequencesView() {
                         save={save}
                         onPromote={(v) => promote(st, v)}
                         promoted={promoted.has(st.id)}
+                        isNext={
+                          st.position === nextPos &&
+                          ["approved", "active", "held"].includes(seq.status)
+                        }
                       />
                     ))}
 
@@ -592,17 +610,25 @@ export default function SequencesView() {
                         Stop sequence
                       </button>
                     )}
-                    {["saved", "stopped", "archived"].includes(seq.status) && (
-                      <button onClick={() => act(seq.id, "restore")}>
-                        Back to pending
-                      </button>
-                    )}
+                    {["saved", "stopped", "archived"].includes(seq.status) &&
+                      (started ? (
+                        <button className="primary" onClick={() => act(seq.id, "restore")}>
+                          Resume sequence
+                        </button>
+                      ) : (
+                        <button onClick={() => act(seq.id, "restore")}>
+                          Back to pending
+                        </button>
+                      ))}
                     {["replied", "done", "saved", "stopped"].includes(seq.status) && (
                       <button className="quiet" onClick={() => act(seq.id, "archive")}>
                         Archive
                       </button>
                     )}
                   </div>
+                  {actErr && actErr.id === seq.id && (
+                    <div className="err">{actErr.msg}</div>
+                  )}
                 </article>
               );
             })}

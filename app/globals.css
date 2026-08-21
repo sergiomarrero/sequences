@@ -1299,3 +1299,111 @@ select.status.s-bounced {
     display: none;
   }
 }
+/* "next up" marker on the lowest unsent step of a live sequence */
+.sdesk .next-pill {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  white-space: nowrap;
+}
+
+/* ---- Sequence Desk, mobile ---- */
+/* the page must never scroll sideways; anything wide clips inside cards */
+.sdesk {
+  overflow-x: clip;
+}
+.sdesk .card,
+.sdesk .step,
+.sdesk details.seq {
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .sdesk .app-header {
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    padding: 10px 14px;
+  }
+  .sdesk .tabs {
+    overflow-x: auto;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .sdesk .tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .sdesk .wrap {
+    padding: 1.4rem 0.9rem 4rem;
+  }
+  .sdesk .card {
+    padding: 1rem 0.9rem 1rem;
+  }
+
+  /* iOS zooms the whole page when a focused input's font is under 16px,
+     which leaves the layout cropped sideways; keep every editable at 16px */
+  .sdesk .letter,
+  .sdesk .t,
+  .sdesk .subj .s,
+  .sdesk .wait-days,
+  .sdesk .new-form input,
+  .sdesk .new-form textarea {
+    font-size: 16px;
+  }
+
+  /* step header: title row first, then marks and wait on their own line */
+  .sdesk .step-head h4 {
+    flex: 1 1 100%;
+  }
+  .sdesk .step-head .wait {
+    margin-left: 0;
+  }
+  .sdesk .starbox button,
+  .sdesk .mv button {
+    padding: 0.35rem 0.8rem;
+    font-size: 1rem;
+    min-height: 40px;
+  }
+  .sdesk .tab {
+    min-height: 40px;
+  }
+  .sdesk .wait-days {
+    width: 3.2rem;
+    padding: 0.3rem 0.1rem;
+  }
+
+  /* actions become thumb-sized, full-width rows */
+  .sdesk .actions {
+    gap: 0.5rem;
+  }
+  .sdesk .actions button {
+    flex: 1 1 44%;
+    padding: 0.75rem 0.6rem;
+    text-align: center;
+  }
+  .sdesk .actions button.quiet {
+    flex: 1 1 100%;
+  }
+  .sdesk .send-now button {
+    width: 100%;
+    padding: 0.8rem 1rem;
+  }
+  .sdesk .card-head h3 {
+    font-size: 1.05rem;
+  }
+  .sdesk .chip {
+    white-space: normal;
+    line-height: 1.4;
+    text-align: right;
+  }
+  .sdesk details.seq summary {
+    padding: 0.9rem 0 0.4rem;
+    min-height: 44px;
+    align-items: center;
+  }
+}

@@ -179,7 +179,21 @@ export async function applySequenceAction(
     if (!rule.from.includes(cur.data.status)) {
       throw new Error(`cannot ${action} from status ${cur.data.status}`);
     }
-    update.status = rule.to;
+    let to: SequenceStatus = rule.to;
+    // A sequence whose introduction already went out resumes mid-thread:
+    // approving or restoring it goes straight to "active" so the mailman
+    // picks up at the next unsent step instead of re-sending the intro.
+    if (to === "pending" || to === "approved") {
+      const sent = await sb
+        .from("crm_sequence_steps")
+        .select("id")
+        .eq("sequence_id", id)
+        .not("sent_at", "is", null)
+        .limit(1);
+      if (sent.error) throw new Error(sent.error.message);
+      if (cur.data.gmail_thread_id || (sent.data ?? []).length) to = "active";
+    }
+    update.status = to;
     if (action === "stop" || action === "restore") update.send_now = false;
     if (action === "restore") update.hold_reason = null;
   }
