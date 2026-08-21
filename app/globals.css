@@ -1474,3 +1474,228 @@ select.status.s-bounced {
 .sdesk .ev-what b {
   font-weight: 650;
 }
+
+/* ---- archive: its own section, a compact table you can filter ---- */
+.sdesk .zone-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+.sdesk .zone-toggle:hover {
+  color: var(--ink);
+}
+.sdesk .zone-count {
+  margin-left: auto;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  font-size: 11.5px;
+}
+.sdesk .caret {
+  display: inline-block;
+  width: 0.9rem;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+.sdesk .arch-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.6rem 0 0.9rem;
+}
+.sdesk .arch-search {
+  flex: 1 1 15rem;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+.sdesk .arch-search::placeholder {
+  color: var(--ink-soft);
+}
+.sdesk .arch-status {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+.sdesk .arch-count {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.sdesk .arch-wrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+.sdesk .arch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.sdesk .arch-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-soft);
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.sdesk .arch-table td {
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  color: var(--ink);
+}
+.sdesk .arch-table tbody tr:not(.arch-detail) {
+  cursor: pointer;
+}
+.sdesk .arch-table tbody tr:not(.arch-detail):hover {
+  background: var(--hover);
+}
+.sdesk .arch-table tr.open td {
+  border-bottom-color: transparent;
+  background: var(--hover);
+}
+.sdesk .arch-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sdesk .arch-email {
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+.sdesk .arch-table .chip.status {
+  font-size: 0.62rem;
+}
+/* the expanded row hosts the full card, so strip the cell's own chrome */
+.sdesk .arch-detail > td {
+  padding: 0 0.5rem 0.8rem;
+  background: var(--hover);
+}
+.sdesk .arch-detail .card {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  /* rows become stacked blocks: a table this wide cannot work on a phone */
+  .sdesk .arch-wrap {
+    background: none;
+    border: none;
+    overflow-x: visible;
+  }
+  .sdesk .arch-table,
+  .sdesk .arch-table tbody,
+  .sdesk .arch-table tr,
+  .sdesk .arch-table td {
+    display: block;
+    width: auto;
+  }
+  .sdesk .arch-table thead {
+    display: none;
+  }
+  .sdesk .arch-table tbody tr:not(.arch-detail) {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 0.6rem;
+    padding: 0.7rem 0.85rem;
+  }
+  .sdesk .arch-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.2rem 0;
+    border: none;
+    text-align: right;
+  }
+  .sdesk .arch-table td::before {
+    content: attr(data-label);
+    flex: 0 0 38%;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  /* the name is the card title: full width, no label */
+  .sdesk .arch-table td[data-label="Name"] {
+    display: block;
+    text-align: left;
+    font-weight: 650;
+    font-size: 1rem;
+    margin-bottom: 0.35rem;
+  }
+  .sdesk .arch-table td[data-label="Name"]::before {
+    display: none;
+  }
+  .sdesk .arch-table tr.open td {
+    background: none;
+  }
+  .sdesk .arch-detail > td {
+    padding: 0 0 0.8rem;
+    background: none;
+  }
+  .sdesk .arch-count {
+    margin-left: 0;
+  }
+}
+
+/* archive table column rhythm: names stay on one line, contact takes the slack */
+.sdesk .arch-table th:first-child,
+.sdesk .arch-table td[data-label="Name"] {
+  white-space: nowrap;
+  width: 1%;
+}
+.sdesk .arch-table th:nth-child(2) {
+  width: auto;
+}
+.sdesk .arch-table td[data-label="Last activity"],
+.sdesk .arch-table th:last-child {
+  white-space: nowrap;
+  width: 1%;
+}
+@media (max-width: 720px) {
+  .sdesk .arch-table td[data-label="Name"] {
+    width: auto;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 720px) {
+  /* long emails cannot live in a right-aligned half-column: give Contact
+     its own line, left aligned */
+  .sdesk .arch-table td[data-label="Contact"] {
+    display: block;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .sdesk .arch-table td[data-label="Contact"]::before {
+    display: block;
+    flex: none;
+    margin-bottom: 0.15rem;
+  }
+  /* the expanded card must not inherit the row's right alignment */
+  .sdesk .arch-detail > td {
+    display: block;
+    text-align: left;
+  }
+}

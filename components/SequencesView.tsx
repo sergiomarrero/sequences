@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Sequence,
   SequenceEvent,
@@ -128,6 +128,15 @@ function chipText(seq: Sequence): string {
       return "Archived";
   }
 }
+
+// Finished states: nothing more will be sent without a human restoring them.
+// These live in the archive section, not the working board.
+const CLOSED_STATUSES: SequenceStatus[] = [
+  "replied",
+  "done",
+  "stopped",
+  "archived",
+];
 
 const STATUS_ORDER: SequenceStatus[] = [
   "held",
@@ -403,6 +412,10 @@ export default function SequencesView() {
   const [armed, setArmed] = useState<string | null>(null);
   const [promoted, setPromoted] = useState<Set<string>>(new Set());
   const [actErr, setActErr] = useState<{ id: string; msg: string } | null>(null);
+  const [archOpen, setArchOpen] = useState(false);
+  const [archQuery, setArchQuery] = useState("");
+  const [archStatus, setArchStatus] = useState<"all" | SequenceStatus>("all");
+  const [archExpanded, setArchExpanded] = useState<Set<string>>(new Set());
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { save, saving, error: saveError } = useSaver();
 
@@ -434,6 +447,32 @@ export default function SequencesView() {
       ),
     [sequences],
   );
+
+  // Work you can still act on stays on the board; anything finished moves to
+  // the archive below, which is its own section rather than the tail of this
+  // list.
+  const live = useMemo(
+    () => ordered.filter((s) => !CLOSED_STATUSES.includes(s.status)),
+    [ordered],
+  );
+  const closed = useMemo(
+    () =>
+      ordered
+        .filter((s) => CLOSED_STATUSES.includes(s.status))
+        .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+    [ordered],
+  );
+  const archiveRows = useMemo(() => {
+    const q = archQuery.trim().toLowerCase();
+    return closed.filter((s) => {
+      if (archStatus !== "all" && s.status !== archStatus) return false;
+      if (!q) return true;
+      return [s.name, s.email, s.firm ?? "", s.background ?? ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [closed, archQuery, archStatus]);
 
   async function act(id: string, action: string) {
     try {
@@ -537,83 +576,10 @@ export default function SequencesView() {
     });
   }
 
-  return (
-    <div className="sdesk">
-      <header className="app-header">
-        <div className="brand">
-          Rebel One <span>Sequences</span>
-        </div>
-        <div className="savestate">
-          {saving ? "Saving…" : saveError ? `Save failed: ${saveError}` : "Saved"}
-        </div>
-      </header>
-
-      <div className="wrap">
-        <h1>Sequence Desk</h1>
-        <p className="tagline">
-          Investor sequences: review drafts, approve or archive, and track
-          who is where. Cards sort themselves by status; the chip on each
-          card is its live state.
-        </p>
-
-        <div className="howto">
-          <p>
-            <strong>Add someone:</strong> paste their name, email, and
-            background into the Claude chat for a fully personalized draft,
-            or use New sequence below. The drafted sequence (introduction
-            plus 7 follow-ups) appears here; the introduction sends when
-            you approve.
-          </p>
-          <p>
-            <strong>Where is everyone?</strong> Each card&apos;s chip says it:
-            &ldquo;Active · step N of 8 sent [date]&rdquo;. Open a card and every
-            sent email carries a green ✓ with its send date.
-          </p>
-          <p>
-            <strong>Edits</strong> to email text, subjects, and wait days
-            save as you type. The ↑↓ arrows reorder unsent steps; the ☆
-            star makes an email the new template default for that step.
-            Decisions take effect at the next weekday morning run, or
-            immediately with Send next email now.
-          </p>
-        </div>
-
-        <NewSequenceForm
-          onCreated={(s) => {
-            setSequences((prev) => [s, ...prev]);
-            setOpen(s.id, true);
-          }}
-        />
-
-        <section className="zone">
-          <h2>Sequences</h2>
-
-          {loading && <div className="loading-bar">Loading…</div>}
-          {loadError && <div className="err">{loadError}</div>}
-
-          {ordered.length > 0 && (
-            <div className="listbar">
-              <span>
-                {ordered.length} sequence{ordered.length === 1 ? "" : "s"}
-              </span>
-              <button
-                className="quiet"
-                onClick={() =>
-                  setOpenCards(
-                    openCards.size
-                      ? new Set()
-                      : new Set(ordered.map((s) => s.id)),
-                  )
-                }
-              >
-                {openCards.size ? "Collapse all" : "Expand all"}
-              </button>
-            </div>
-          )}
-
-          <div className="list">
-            {ordered.map((seq) => {
-              const open = openCards.has(seq.id);
+  // One sequence card. Used by the live list and by an expanded archive row,
+  // so both places behave identically.
+  function renderCard(seq: Sequence) {
+    const open = openCards.has(seq.id);
               const followups = Math.max(0, seq.steps.length - 1);
               const started = seq.steps.some((s) => s.sent_at);
               const nextStep = [...seq.steps]
@@ -780,9 +746,227 @@ export default function SequencesView() {
                     <div className="err">{actErr.msg}</div>
                   )}
                 </article>
-              );
-            })}
+    );
+  }
+
+  return (
+    <div className="sdesk">
+      <header className="app-header">
+        <div className="brand">
+          Rebel One <span>Sequences</span>
+        </div>
+        <div className="savestate">
+          {saving ? "Saving…" : saveError ? `Save failed: ${saveError}` : "Saved"}
+        </div>
+      </header>
+
+      <div className="wrap">
+        <h1>Sequence Desk</h1>
+        <p className="tagline">
+          Investor sequences: review drafts, approve or archive, and track
+          who is where. Cards sort themselves by status; the chip on each
+          card is its live state.
+        </p>
+
+        <div className="howto">
+          <p>
+            <strong>Add someone:</strong> paste their name, email, and
+            background into the Claude chat for a fully personalized draft,
+            or use New sequence below. The drafted sequence (introduction
+            plus 7 follow-ups) appears here; the introduction sends when
+            you approve.
+          </p>
+          <p>
+            <strong>Where is everyone?</strong> Each card&apos;s chip says it:
+            &ldquo;Active · step N of 8 sent [date]&rdquo;. Open a card and every
+            sent email carries a green ✓ with its send date.
+          </p>
+          <p>
+            <strong>Edits</strong> to email text, subjects, and wait days
+            save as you type. The ↑↓ arrows reorder unsent steps; the ☆
+            star makes an email the new template default for that step.
+            Decisions take effect at the next weekday morning run, or
+            immediately with Send next email now.
+          </p>
+        </div>
+
+        <NewSequenceForm
+          onCreated={(s) => {
+            setSequences((prev) => [s, ...prev]);
+            setOpen(s.id, true);
+          }}
+        />
+
+        <section className="zone">
+          <h2>Sequences</h2>
+
+          {loading && <div className="loading-bar">Loading…</div>}
+          {loadError && <div className="err">{loadError}</div>}
+
+          {live.length > 0 && (
+            <div className="listbar">
+              <span>
+                {live.length} live sequence{live.length === 1 ? "" : "s"}
+              </span>
+              <button
+                className="quiet"
+                onClick={() =>
+                  setOpenCards(
+                    openCards.size ? new Set() : new Set(live.map((s) => s.id)),
+                  )
+                }
+              >
+                {openCards.size ? "Collapse all" : "Expand all"}
+              </button>
+            </div>
+          )}
+          {!loading && live.length === 0 && (
+            <p className="edit-hint">
+              Nothing live right now. New drafts appear here; finished ones
+              are in the archive below.
+            </p>
+          )}
+
+          <div className="list">
+            {live.map((seq) => renderCard(seq))}
           </div>
+        </section>
+
+        <section className="zone archive-zone">
+          <h2 className="zone-toggle" onClick={() => setArchOpen((v) => !v)}>
+            <span className="caret">{archOpen ? "\u25be" : "\u25b8"}</span>
+            Archive
+            <span className="zone-count">
+              {closed.length} finished sequence{closed.length === 1 ? "" : "s"}
+            </span>
+          </h2>
+
+          {archOpen && (
+            <>
+              <p className="edit-hint">
+                Replied, completed, stopped, and archived sequences. Nothing
+                here sends. Tap a row to read it, restore it, or archive it
+                for good.
+              </p>
+
+              <div className="arch-filters">
+                <input
+                  className="arch-search"
+                  type="search"
+                  placeholder={"Filter by name, email, firm, background\u2026"}
+                  value={archQuery}
+                  onChange={(e) => setArchQuery(e.target.value)}
+                  aria-label="Filter archived sequences"
+                />
+                <select
+                  className="arch-status"
+                  value={archStatus}
+                  onChange={(e) =>
+                    setArchStatus(e.target.value as "all" | SequenceStatus)
+                  }
+                  aria-label="Filter by status"
+                >
+                  <option value="all">All statuses</option>
+                  {CLOSED_STATUSES.map((st) => (
+                    <option key={st} value={st}>
+                      {st[0].toUpperCase() + st.slice(1)} (
+                      {closed.filter((s) => s.status === st).length})
+                    </option>
+                  ))}
+                </select>
+                {(archQuery || archStatus !== "all") && (
+                  <button
+                    className="quiet"
+                    onClick={() => {
+                      setArchQuery("");
+                      setArchStatus("all");
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+                <span className="arch-count">
+                  {archiveRows.length} of {closed.length} shown
+                </span>
+              </div>
+
+              {closed.length === 0 ? (
+                <p className="edit-hint">
+                  Nothing archived yet. Sequences land here once they are
+                  replied to, completed, stopped, or archived.
+                </p>
+              ) : archiveRows.length === 0 ? (
+                <p className="edit-hint">
+                  No archived sequence matches that filter.
+                </p>
+              ) : (
+                <div className="arch-wrap">
+                  <table className="arch-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Contact</th>
+                        <th>Status</th>
+                        <th className="num">Sent</th>
+                        <th>Last activity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {archiveRows.map((seq) => {
+                        const isOpen = archExpanded.has(seq.id);
+                        const sent = seq.steps.filter((s) => s.sent_at).length;
+                        return (
+                          <Fragment key={seq.id}>
+                            <tr
+                              className={isOpen ? "open" : ""}
+                              onClick={() =>
+                                setArchExpanded((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(seq.id)) next.delete(seq.id);
+                                  else next.add(seq.id);
+                                  return next;
+                                })
+                              }
+                            >
+                              <td data-label="Name">
+                                <span className="caret">
+                                  {isOpen ? "\u25be" : "\u25b8"}
+                                </span>
+                                {seq.name}
+                                {seq.is_test && (
+                                  <span className="test-tag">TEST</span>
+                                )}
+                              </td>
+                              <td data-label="Contact">
+                                <span className="arch-email">{seq.email}</span>
+                                {seq.firm ? ` \u00b7 ${seq.firm}` : ""}
+                              </td>
+                              <td data-label="Status">
+                                <span className={`chip status st-${seq.status}`}>
+                                  {seq.status}
+                                </span>
+                              </td>
+                              <td className="num" data-label="Sent">
+                                {sent}/{seq.steps.length}
+                              </td>
+                              <td data-label="Last activity">
+                                {fmtDate(seq.updated_at)}
+                              </td>
+                            </tr>
+                            {isOpen && (
+                              <tr className="arch-detail">
+                                <td colSpan={5}>{renderCard(seq)}</td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </section>
 
         <section className="zone">
