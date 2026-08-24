@@ -657,6 +657,53 @@ export async function deleteStep(
   await refreshHoldState(sequenceId);
 }
 
+// How long a claim stands before another run may take it. Long enough that a
+// slow send never gets double-claimed, short enough that a crashed run does
+// not wedge the step until someone notices.
+const CLAIM_STALE_MS = 30 * 60 * 1000;
+
+// Take the exclusive right to send this step. Returns false when someone
+// already holds it, or when the step has already gone out.
+//
+// The whole guarantee lives in this one conditional UPDATE. Postgres locks
+// the row and re-evaluates the WHERE against the locked version, so of two
+// concurrent callers exactly one matches a row and the other matches none.
+// Never split this into a read-then-write: that reintroduces the race it
+// exists to close.
+export async function claimStepSend(
+  sequenceId: string,
+  stepId: string,
+): Promise<boolean> {
+  const sb = supabase();
+  const cutoff = new Date(Date.now() - CLAIM_STALE_MS).toISOString();
+  const res = await sb
+    .from("crm_sequence_steps")
+    .update({ send_claimed_at: new Date().toISOString() })
+    .eq("id", stepId)
+    .eq("sequence_id", sequenceId)
+    .is("sent_at", null)
+    .or(`send_claimed_at.is.null,send_claimed_at.lt.${cutoff}`)
+    .select("id");
+  if (res.error) throw new Error(res.error.message);
+  return (res.data?.length ?? 0) > 0;
+}
+
+// Hand the claim back after a send that did not happen, so the next run can
+// retry immediately instead of waiting out the staleness window.
+export async function releaseStepClaim(
+  sequenceId: string,
+  stepId: string,
+): Promise<void> {
+  const sb = supabase();
+  const res = await sb
+    .from("crm_sequence_steps")
+    .update({ send_claimed_at: null })
+    .eq("id", stepId)
+    .eq("sequence_id", sequenceId)
+    .is("sent_at", null);
+  if (res.error) throw new Error(res.error.message);
+}
+
 export async function moveStep(
   sequenceId: string,
   stepId: string,
