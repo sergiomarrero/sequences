@@ -196,14 +196,85 @@ export function hasUnresolvedSlots(text: string): boolean {
 
 // The [bracketed] placeholders still sitting in a step's sendable text.
 // Position 1 carries a subject line, so its slots count too.
-export function unresolvedSlots(step: {
-  position: number;
-  subject: string | null;
-  body: string;
-}): string[] {
+export interface SequenceFact {
+  key: string;
+  label: string;
+  value: string;
+  updated_at: string;
+}
+
+// Facts are shared, round-level truths ("where the round stands") that steps
+// reference as {{key}} tokens. Missing table = migration 0011 not run yet;
+// every reader degrades to "no facts" so the rest of the desk keeps working.
+export async function listFacts(): Promise<SequenceFact[]> {
+  const sb = supabase();
+  const res = await sb
+    .from("crm_sequence_facts")
+    .select("*")
+    .order("key", { ascending: true });
+  if (res.error) return [];
+  return res.data ?? [];
+}
+
+export async function factsMap(): Promise<Record<string, string>> {
+  const map: Record<string, string> = {};
+  for (const f of await listFacts()) map[f.key] = f.value;
+  return map;
+}
+
+export async function setFact(key: string, value: string): Promise<SequenceFact> {
+  const sb = supabase();
+  const res = await sb
+    .from("crm_sequence_facts")
+    .update({ value, updated_at: new Date().toISOString() })
+    .eq("key", key)
+    .select("*")
+    .single();
+  if (res.error) {
+    throw new SequenceError(
+      res.error.message.includes("crm_sequence_facts")
+        ? "facts table missing: run db/migrations/0011_crm_sequence_facts.sql"
+        : res.error.message.includes("0 rows") || res.error.code === "PGRST116"
+          ? `unknown fact "${key}"`
+          : res.error.message,
+      res.error.code === "PGRST116" ? 404 : 500,
+    );
+  }
+  return res.data;
+}
+
+// {{key}} tokens in a text, resolved against the facts. Exported for the
+// facts API's preview and for tests of the slot gate.
+export const FACT_TOKEN = /\{\{\s*([a-z0-9_]+)\s*\}\}/gi;
+
+export function resolveFacts(
+  text: string,
+  facts: Record<string, string>,
+): string {
+  return text.replace(FACT_TOKEN, (whole, key: string) => {
+    const v = facts[key.toLowerCase()];
+    return v && v.trim() ? v : whole;
+  });
+}
+
+export function unresolvedSlots(
+  step: {
+    position: number;
+    subject: string | null;
+    body: string;
+  },
+  facts: Record<string, string> = {},
+): string[] {
   const text =
     step.position === 1 ? `${step.subject ?? ""}\n${step.body}` : step.body;
-  return text.match(/\[[^\]]+\]/g) ?? [];
+  // [bracketed] text is a per-sequence slot; a {{token}} whose fact is empty
+  // is a round-level one. Both block a send the same way.
+  const slots: string[] = text.match(/\[[^\]]+\]/g) ?? [];
+  for (const m of text.matchAll(FACT_TOKEN)) {
+    const v = facts[m[1].toLowerCase()];
+    if (!v || !v.trim()) slots.push(m[0]);
+  }
+  return slots;
 }
 
 export function holdReasonFor(position: number, slots: string[]): string {
@@ -223,7 +294,7 @@ export async function refreshHoldState(sequenceId: string): Promise<void> {
   if (cur.error) throw new Error(cur.error.message);
 
   const next = await nextUnsentStep(sequenceId);
-  const slots = next ? unresolvedSlots(next) : [];
+  const slots = next ? unresolvedSlots(next, await factsMap()) : [];
   const update: Record<string, unknown> = {};
 
   if (slots.length) {
@@ -286,6 +357,7 @@ const EVENTS_PER_SEQUENCE = 60;
 export async function listSequences(): Promise<{
   sequences: Sequence[];
   templates: SequenceTemplateStep[];
+  facts: SequenceFact[];
 }> {
   const sb = supabase();
   const [seqRes, stepRes, tplRes] = await Promise.all([
@@ -328,6 +400,8 @@ export async function listSequences(): Promise<{
   return {
     sequences: [...byId.values()],
     templates: tplRes.data ?? [],
+    // empty until migration 0011 runs; the board treats that as "no facts"
+    facts: await listFacts(),
   };
 }
 
@@ -412,7 +486,7 @@ export async function applySequenceAction(
     // hold the sequence and say what it needs instead of pretending it is on
     // its way. Same rule the mailman applies at send time.
     const nextStep = await nextUnsentStep(id);
-    const slots = nextStep ? unresolvedSlots(nextStep) : [];
+    const slots = nextStep ? unresolvedSlots(nextStep, await factsMap()) : [];
     if (nextStep && slots.length) {
       update.send_now = false;
       update.status = "held";
