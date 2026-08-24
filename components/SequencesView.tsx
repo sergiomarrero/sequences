@@ -129,6 +129,91 @@ function chipText(seq: Sequence): string {
   }
 }
 
+// The slots still blocking a step. Shared by the card and the running board
+// so both agree on what "needs input" means.
+function slotsIn(step: SequenceStep | undefined): string[] {
+  if (!step) return [];
+  const text =
+    step.position === 1 ? `${step.subject ?? ""}\n${step.body}` : step.body;
+  return text.match(/\[[^\]]+\]/g) ?? [];
+}
+
+function firstUnsent(seq: Sequence): SequenceStep | undefined {
+  return [...seq.steps]
+    .filter((s) => !s.sent_at)
+    .sort((a, b) => a.position - b.position)[0];
+}
+
+function lastSentAt(seq: Sequence): string | null {
+  const sent = seq.steps
+    .filter((s) => s.sent_at)
+    .map((s) => s.sent_at as string)
+    .sort();
+  return sent.length ? sent[sent.length - 1] : null;
+}
+
+// Business days elapsed since a send: exclusive of the send day, inclusive of
+// today, matching how the daily run counts a wait.
+function businessDaysSince(iso: string): number {
+  const from = new Date(iso);
+  const d = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate());
+  const now = new Date();
+  const end = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  let n = 0;
+  for (let t = d + 86400000; t <= end; t += 86400000) {
+    const wd = new Date(t).getUTCDay();
+    if (wd !== 0 && wd !== 6) n += 1;
+  }
+  return n;
+}
+
+// One line answering "what happens next, and is it on me?". `rank` sorts the
+// running board so anything waiting on Sergio floats to the top.
+type NextTone = "needs" | "go" | "wait" | "idle";
+function nextAction(seq: Sequence): {
+  label: string;
+  tone: NextTone;
+  rank: number;
+} {
+  if (seq.status === "stopped") return { label: "Stopped", tone: "idle", rank: 9 };
+  const next = firstUnsent(seq);
+  if (!next) return { label: "All emails sent", tone: "idle", rank: 8 };
+  const slots = slotsIn(next);
+  if (seq.status === "held" || slots.length) {
+    return {
+      label: `Needs input \u00b7 step ${next.position}`,
+      tone: "needs",
+      rank: 0,
+    };
+  }
+  if (seq.send_now) {
+    return { label: `Queued \u00b7 step ${next.position}`, tone: "go", rank: 1 };
+  }
+  if (seq.status === "approved") {
+    return { label: "Intro sends next run", tone: "go", rank: 1 };
+  }
+  const last = lastSentAt(seq);
+  if (!last) return { label: `Step ${next.position} waiting`, tone: "wait", rank: 7 };
+  const left = next.wait_days - businessDaysSince(last);
+  if (left <= 0) {
+    return { label: `Due now \u00b7 step ${next.position}`, tone: "go", rank: 2 };
+  }
+  return {
+    label: `Step ${next.position} in ${left} bd`,
+    tone: "wait",
+    rank: 3 + Math.min(left, 99) / 100,
+  };
+}
+
+// Sequences that are sending or paused mid-flight. These are the ones that
+// pile up, so they get the dense board rather than a stack of cards.
+const RUNNING_STATUSES: SequenceStatus[] = [
+  "approved",
+  "active",
+  "held",
+  "stopped",
+];
+
 // Finished states: the conversation is over. These live in the archive.
 // "stopped" is deliberately not here: a stopped sequence is paused work you
 // may well resume, so it stays on the board where you can see it.
@@ -217,6 +302,7 @@ function StepEditor({
   url,
   canMove,
   onMove,
+  onRemove,
   save,
   onPromote,
   promoted,
@@ -227,6 +313,8 @@ function StepEditor({
   url: string;
   canMove: boolean;
   onMove: (dir: "up" | "down") => void;
+  // absent when this step cannot be removed (sent, or the only one left)
+  onRemove?: () => void;
   save: (key: string, url: string, patch: Record<string, unknown>) => void;
   onPromote?: (v: { title: string; subject: string | null; body: string }) => void;
   promoted?: boolean;
@@ -239,6 +327,9 @@ function StepEditor({
   const [subject, setSubject] = useState(step.subject ?? "");
   const [body, setBody] = useState(step.body);
   const [wait, setWait] = useState(step.wait_days);
+  // removing an email is destructive and the control is small, so it takes
+  // two taps: the same pattern as the send button
+  const [armRemove, setArmRemove] = useState(false);
   const sent = !!step.sent_at;
 
   useEffect(() => {
@@ -288,6 +379,31 @@ function StepEditor({
           <span className="mv">
             <button onClick={() => onMove("up")} aria-label="Move earlier">↑</button>
             <button onClick={() => onMove("down")} aria-label="Move later">↓</button>
+          </span>
+        )}
+        {!sent && onRemove && (
+          <span className="rm">
+            <button
+              type="button"
+              className={armRemove ? "armed" : ""}
+              title="Remove this email from the sequence"
+              aria-label={
+                armRemove
+                  ? `Confirm removing step ${step.position}`
+                  : `Remove step ${step.position}`
+              }
+              onClick={() => {
+                if (armRemove) {
+                  setArmRemove(false);
+                  onRemove();
+                } else {
+                  setArmRemove(true);
+                }
+              }}
+              onBlur={() => setArmRemove(false)}
+            >
+              {armRemove ? "Remove?" : "\u00d7"}
+            </button>
           </span>
         )}
         {!sent && step.position === 1 && (
@@ -440,6 +556,13 @@ export default function SequencesView() {
   const [ackFor, setAckFor] = useState<{ id: string; target: SequenceStatus } | null>(null);
   const [ackChecked, setAckChecked] = useState(false);
   const [archOpen, setArchOpen] = useState(false);
+  // Running board: filter, search, which rows are expanded, and an escape
+  // hatch back to the full-card layout for anyone who prefers it.
+  const [runFilter, setRunFilter] = useState<"all" | "needs" | "go">("all");
+  const [runQuery, setRunQuery] = useState("");
+  const [runExpanded, setRunExpanded] = useState<Set<string>>(new Set());
+  const [runCards, setRunCards] = useState(false);
+
   const [archQuery, setArchQuery] = useState("");
   const [archStatus, setArchStatus] = useState<"all" | SequenceStatus>("all");
   const [archExpanded, setArchExpanded] = useState<Set<string>>(new Set());
@@ -482,6 +605,44 @@ export default function SequencesView() {
     () => ordered.filter((s) => !CLOSED_STATUSES.includes(s.status)),
     [ordered],
   );
+  // Drafts still need reading, so they stay as cards. Running sequences are
+  // the ones that pile up; they get the board.
+  const drafts = useMemo(
+    () => live.filter((s) => !RUNNING_STATUSES.includes(s.status)),
+    [live],
+  );
+  const running = useMemo(
+    () =>
+      live
+        .filter((s) => RUNNING_STATUSES.includes(s.status))
+        .map((s) => ({ seq: s, next: nextAction(s) }))
+        .sort(
+          (a, b) =>
+            a.next.rank - b.next.rank || a.seq.name.localeCompare(b.seq.name),
+        ),
+    [live],
+  );
+  const needsYou = useMemo(
+    () => running.filter((r) => r.next.tone === "needs"),
+    [running],
+  );
+  const queued = useMemo(
+    () => running.filter((r) => r.next.tone === "go"),
+    [running],
+  );
+  const runRows = useMemo(() => {
+    const q = runQuery.trim().toLowerCase();
+    return running.filter(({ seq, next }) => {
+      if (runFilter === "needs" && next.tone !== "needs") return false;
+      if (runFilter === "go" && next.tone !== "go") return false;
+      if (!q) return true;
+      return [seq.name, seq.email, seq.firm ?? ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [running, runFilter, runQuery]);
+
   const closed = useMemo(
     () =>
       ordered
@@ -530,6 +691,21 @@ export default function SequencesView() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ move: dir }),
     });
+    load();
+  }
+
+  async function removeStep(seq: Sequence, step: SequenceStep) {
+    const r = await fetch(`/api/sequences/${seq.id}/steps/${step.id}`, {
+      method: "DELETE",
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      setActErr({
+        id: seq.id,
+        msg: j?.error ?? "could not remove that email",
+      });
+      return;
+    }
     load();
   }
 
@@ -794,6 +970,11 @@ export default function SequencesView() {
                         url={`/api/sequences/${seq.id}/steps/${st.id}`}
                         canMove={!st.sent_at}
                         onMove={(dir) => move(seq, st, dir)}
+                        onRemove={
+                          !st.sent_at && seq.steps.length > 1
+                            ? () => removeStep(seq, st)
+                            : undefined
+                        }
                         save={save}
                         onPromote={(v) => promote(st, v)}
                         promoted={promoted.has(st.id)}
@@ -809,7 +990,7 @@ export default function SequencesView() {
                       Tap any email to edit it in place; edits save. A step
                       still carrying [slots] is skipped, never sent. The ☆
                       star marks an email as the new template default for
-                      that step; ↑↓ reorder unsent steps.
+                      that step; ↑↓ reorder unsent steps, and × removes one.
                     </p>
 
                   </details>
@@ -916,9 +1097,19 @@ export default function SequencesView() {
   return (
     <div className="sdesk">
       <header className="app-header">
-        <div className="brand">
-          Rebel One <span>Sequences</span>
+        <div className="brandwrap">
+          <span className="logomark" aria-hidden="true">
+            R<span className="prime" />
+          </span>
+          <div className="brand">
+            Rebel One CRM<span className="dot">.</span>
+          </div>
         </div>
+        <nav className="tabs">
+          <a href="/"><button className="tab">Inbox</button></a>
+          <a href="/contacts"><button className="tab">All Contacts</button></a>
+          <a href="/sequences"><button className="tab active">Sequences</button></a>
+        </nav>
         <div className="savestate">
           {saving ? "Saving…" : saveError ? `Save failed: ${saveError}` : "Saved"}
         </div>
@@ -947,7 +1138,7 @@ export default function SequencesView() {
           </p>
           <p>
             <strong>Edits</strong> to email text, subjects, and wait days
-            save as you type. The ↑↓ arrows reorder unsent steps; the ☆
+            save as you type. The ↑↓ arrows reorder unsent steps and × removes one; the ☆
             star makes an email the new template default for that step.
             Decisions take effect at the next weekday morning run, or
             immediately with Send next email now.
@@ -962,21 +1153,23 @@ export default function SequencesView() {
         />
 
         <section className="zone">
-          <h2>Sequences</h2>
+          <h2>Drafts</h2>
 
           {loading && <div className="loading-bar">Loading…</div>}
           {loadError && <div className="err">{loadError}</div>}
 
-          {live.length > 0 && (
+          {drafts.length > 0 && (
             <div className="listbar">
               <span>
-                {live.length} live sequence{live.length === 1 ? "" : "s"}
+                {drafts.length} awaiting review
               </span>
               <button
                 className="quiet"
                 onClick={() =>
                   setOpenCards(
-                    openCards.size ? new Set() : new Set(live.map((s) => s.id)),
+                    openCards.size
+                      ? new Set()
+                      : new Set(drafts.map((s) => s.id)),
                   )
                 }
               >
@@ -984,16 +1177,173 @@ export default function SequencesView() {
               </button>
             </div>
           )}
-          {!loading && live.length === 0 && (
+          {!loading && drafts.length === 0 && (
             <p className="edit-hint">
-              Nothing live right now. New drafts appear here; finished ones
-              are in the archive below.
+              No drafts waiting. New ones appear here to read and approve.
             </p>
           )}
 
           <div className="list">
-            {live.map((seq) => renderCard(seq))}
+            {drafts.map((seq) => renderCard(seq))}
           </div>
+        </section>
+
+        <section className="zone">
+          <h2>Running</h2>
+
+          <div className="tallies">
+            <button
+              type="button"
+              className={`tally ${runFilter === "needs" ? "on" : ""} ${
+                needsYou.length ? "hot" : ""
+              }`}
+              onClick={() =>
+                setRunFilter((f) => (f === "needs" ? "all" : "needs"))
+              }
+            >
+              <span className="n">{needsYou.length}</span>
+              <span className="k">need you</span>
+            </button>
+            <button
+              type="button"
+              className={`tally ${runFilter === "go" ? "on" : ""}`}
+              onClick={() => setRunFilter((f) => (f === "go" ? "all" : "go"))}
+            >
+              <span className="n">{queued.length}</span>
+              <span className="k">sending next run</span>
+            </button>
+            <button
+              type="button"
+              className={`tally ${runFilter === "all" ? "on" : ""}`}
+              onClick={() => setRunFilter("all")}
+            >
+              <span className="n">{running.length}</span>
+              <span className="k">running</span>
+            </button>
+          </div>
+
+          {running.length > 0 && (
+            <div className="arch-filters">
+              <input
+                className="arch-search"
+                type="search"
+                placeholder={"Search name, email, or firm\u2026"}
+                aria-label="Search running sequences"
+                value={runQuery}
+                onChange={(e) => setRunQuery(e.target.value)}
+              />
+              <button className="quiet" onClick={() => setRunCards((v) => !v)}>
+                {runCards ? "Table view" : "Card view"}
+              </button>
+              <span className="arch-count">
+                {runRows.length} of {running.length} shown
+              </span>
+            </div>
+          )}
+
+          {!loading && running.length === 0 && (
+            <p className="edit-hint">
+              Nothing running. Approve a draft above and its introduction
+              goes out on the next weekday morning run.
+            </p>
+          )}
+
+          {running.length > 0 && runRows.length === 0 && (
+            <p className="edit-hint">Nothing running matches that filter.</p>
+          )}
+
+          {runCards ? (
+            <div className="list">{runRows.map((r) => renderCard(r.seq))}</div>
+          ) : (
+            runRows.length > 0 && (
+              <div className="arch-wrap">
+                <table className="arch-table run-table">
+                  <colgroup>
+                    <col className="c-name" />
+                    <col className="c-contact" />
+                    <col className="c-next" />
+                    <col className="c-sent" />
+                    <col className="c-last" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Firm</th>
+                      <th>Next</th>
+                      <th className="num">Sent</th>
+                      <th>Last</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runRows.map(({ seq, next }) => {
+                      const isOpen = runExpanded.has(seq.id);
+                      const sent = seq.steps.filter((s) => s.sent_at).length;
+                      const last = lastSentAt(seq);
+                      return (
+                        <Fragment key={seq.id}>
+                          <tr
+                            className={`${isOpen ? "open" : ""} tone-${next.tone}`}
+                            onClick={() =>
+                              setRunExpanded((prev) => {
+                                const nx = new Set(prev);
+                                if (nx.has(seq.id)) nx.delete(seq.id);
+                                else nx.add(seq.id);
+                                return nx;
+                              })
+                            }
+                          >
+                            <td data-label="Name">
+                              <span className="caret">
+                                {isOpen ? "\u25be" : "\u25b8"}
+                              </span>
+                              {seq.name}
+                              {seq.is_test && (
+                                <span className="test-tag">TEST</span>
+                              )}
+                            </td>
+                            {/* the firm identifies them at a glance; the
+                                full address only ever truncated here, and
+                                it is one tap away in the card */}
+                            <td data-label="Firm" title={seq.email}>
+                              {seq.firm ?? (
+                                <span className="arch-email">{seq.email}</span>
+                              )}
+                            </td>
+                            <td data-label="Next">
+                              <span className={`nextchip t-${next.tone}`}>
+                                {next.label}
+                              </span>
+                            </td>
+                            <td className="num" data-label="Sent">
+                              <span className="prog">
+                                <span
+                                  className="prog-fill"
+                                  style={{
+                                    width: `${
+                                      (sent / Math.max(1, seq.steps.length)) * 100
+                                    }%`,
+                                  }}
+                                />
+                              </span>
+                              {sent}/{seq.steps.length}
+                            </td>
+                            <td data-label="Last">
+                              {last ? fmtDate(last) : "\u2014"}
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="arch-detail">
+                              <td colSpan={5}>{renderCard(seq)}</td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
         </section>
 
         <section className="zone archive-zone">

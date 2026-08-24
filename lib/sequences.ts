@@ -86,6 +86,39 @@ export const STEP_EDITABLE_FIELDS = [
 const TRACKING_RE =
   /https?:\/\/(?:www\.)?google\.com\/url\?[^\s<>"]*/gi;
 
+// A body written by the sync caller can arrive hard-wrapped, because the
+// drafts it is loaded from are text files wrapped for reading at ~72
+// columns. Those newlines are mechanical, not authorial: in the editor's
+// textarea they freeze the text so it will not reflow as you type, and the
+// paragraph reads as a stack of short lines. Join them back up.
+//
+// A break is mechanical when the line before it was already full. That one
+// test is what protects the breaks that mean something: "Best," is five
+// characters, so "Sergio" never gets pulled up onto it. List items are
+// spared outright, whatever the line before them looked like.
+const WRAPPED_AT = 45;
+const LIST_ITEM = /^\s*(?:\d+[.)]|[-*\u2022])\s/;
+
+export function unwrapHardBreaks(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (const line of lines) {
+    const prev = out[out.length - 1];
+    const joinable =
+      prev !== undefined &&
+      prev.trim() !== "" &&
+      line.trim() !== "" &&
+      prev.trimEnd().length >= WRAPPED_AT &&
+      !LIST_ITEM.test(line);
+    if (joinable) {
+      out[out.length - 1] = `${prev.trimEnd()} ${line.trimStart()}`;
+    } else {
+      out.push(line);
+    }
+  }
+  return out.join("\n");
+}
+
 export function unwrapTrackingUrls(text: string): string {
   return text.replace(TRACKING_RE, (match) => {
     try {
@@ -442,6 +475,74 @@ export async function applySequenceAction(
 }
 
 // Swap an unsent step with its unsent neighbor.
+// Remove an unsent step and close the gap behind it. A sequence whose
+// contact only warrants five emails should be five emails long, not eight
+// with three left dangling for the mailman to trip over.
+export async function deleteStep(
+  sequenceId: string,
+  stepId: string,
+): Promise<void> {
+  const sb = supabase();
+  const res = await sb
+    .from("crm_sequence_steps")
+    .select("id, position, title, sent_at")
+    .eq("sequence_id", sequenceId)
+    .order("position", { ascending: true });
+  if (res.error) throw new Error(res.error.message);
+  const steps = res.data ?? [];
+  const victim = steps.find((s) => s.id === stepId);
+  if (!victim) throw new SequenceError("step not found", 404);
+  if (victim.sent_at) {
+    throw new SequenceError(
+      "this email already sent; it can no longer be removed",
+      409,
+    );
+  }
+  if (steps.length <= 1) {
+    throw new SequenceError("a sequence needs at least one email", 409);
+  }
+
+  const del = await sb.from("crm_sequence_steps").delete().eq("id", stepId);
+  if (del.error) throw new Error(del.error.message);
+
+  // close the gap. (sequence_id, position) is unique, so walk upward in
+  // order: each step moves into the slot the one before it just vacated.
+  for (const s of steps) {
+    if (s.position <= victim.position) continue;
+    const u = await sb
+      .from("crm_sequence_steps")
+      .update({ position: s.position - 1 })
+      .eq("id", s.id);
+    if (u.error) throw new Error(u.error.message);
+  }
+
+  // next_step may now point past the end, or at a step that shifted down
+  const seq = await sb
+    .from("crm_sequences")
+    .select("next_step")
+    .eq("id", sequenceId)
+    .single();
+  if (!seq.error) {
+    const remaining = steps.length - 1;
+    const next = Math.min(
+      Math.max(1, seq.data.next_step > victim.position ? seq.data.next_step - 1 : seq.data.next_step),
+      remaining,
+    );
+    if (next !== seq.data.next_step) {
+      await sb.from("crm_sequences").update({ next_step: next }).eq("id", sequenceId);
+    }
+  }
+
+  await logEvent(sequenceId, {
+    action: "removed",
+    detail: `step ${victim.position} "${victim.title}" removed; ${steps.length - 1} emails remain`,
+    stepPosition: victim.position,
+  });
+
+  // the hold may have been pinned to the step that just went away
+  await refreshHoldState(sequenceId);
+}
+
 export async function moveStep(
   sequenceId: string,
   stepId: string,

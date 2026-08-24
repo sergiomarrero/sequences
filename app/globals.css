@@ -1,62 +1,59 @@
-/* Rebel One CRM design system, derived from the Sequence Desk prototype:
-   paper ground, teal accent, Archivo for UI, IBM Plex Mono for data
-   accents (chips, metadata, table headers), Source Serif 4 for email
-   letters. Light and dark follow the OS. */
+/* Rebel One CRM — styled on the shared Rebel One design system
+   (source of truth: sergiomarrero/signal docs/DESIGN_SYSTEM.md).
+   One dark surface family, one text pair, four semantic colors.
+   Orange = identity (brand, section labels, primary actions).
+   Blue = interaction (links, focus, hover borders). */
 
 :root {
-  --bg: #fbfcfd;
-  --panel: #ffffff;
-  --ink: #182430;
-  --body-ink: #42505e;
-  --ink-soft: #6d7a87;
-  --line: #dde4ea;
-  --accent: #0e6b66;
-  --accent-ink: #ffffff;
-  --accent-soft: #e3efee;
-  --good: #0e6b66;
-  --good-soft: #e3efee;
-  --warn: #8a6100;
-  --warn-soft: #f9edd2;
-  --bad: #8c3a2e;
-  --bad-soft: #f6e2dd;
-  --info: #0e6b66;
-  --info-soft: #e3efee;
-  --mute-soft: #eef2f5;
-  --hover: #f4f7f8;
-  --slot-bg: #f6e7c6;
-  --slot-ink: #6d4d00;
-  --radius: 10px;
-  --shadow: 0 1px 2px rgba(24, 36, 48, 0.05), 0 4px 16px rgba(24, 36, 48, 0.04);
-  --font-sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-serif: "Source Serif 4", Georgia, serif;
-}
+  /* §1 tokens, verbatim */
+  --bg: #0e1116;
+  --panel: #161b22;
+  --panel2: #1c2330;
+  --line: #2b3340;
+  --txt: #e6edf3;
+  --muted: #9aa7b4;
+  --accent: #e8530e;
+  --accent-soft: #ff6a26; /* hover of the identity orange */
+  --blue: #58a6ff;
+  --good: #3fb950;
+  --warn: #d29922;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #10181f;
-    --panel: #17212b;
-    --ink: #e8eef3;
-    --body-ink: #b7c2cc;
-    --ink-soft: #8494a2;
-    --line: #2a3844;
-    --accent: #4fb3ab;
-    --accent-ink: #0c1418;
-    --accent-soft: #14312f;
-    --good: #4fb3ab;
-    --good-soft: #14312f;
-    --warn: #e5b95c;
-    --warn-soft: #33290f;
-    --bad: #e08573;
-    --bad-soft: #3a1f19;
-    --info: #4fb3ab;
-    --info-soft: #14312f;
-    --mute-soft: #1c2833;
-    --hover: #1c2833;
-    --slot-bg: #3a2f12;
-    --slot-ink: #eac97a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
-  }
+  /* soft tints = semantic color at low alpha (§1) */
+  --good-border: #3fb95044;
+  --good-ring: #3fb95022;
+  --warn-bg: #d2992218;
+  --warn-border: #d2992244;
+  --warn-ring: #d2992218;
+  --blue-ring: #58a6ff18;
+  --danger: #e5714a;
+  --danger-border: #d64545;
+  --danger-bg: #d6454518;
+  --blue-bg: #58a6ff18;
+  --hover: #171d27; /* interactive row/card hover surface */
+
+  /* legacy aliases so existing inline var() references keep resolving */
+  --ink: var(--txt);
+  --body-ink: var(--txt);
+  --ink-soft: var(--muted);
+  --accent-ink: #ffffff;
+  --mute-soft: var(--panel2);
+  --info: var(--blue);
+  --info-soft: var(--blue-bg);
+  --good-soft: var(--good-ring);
+  --warn-soft: var(--warn-bg);
+  --bad: var(--danger);
+  --bad-soft: var(--danger-bg);
+  --slot-bg: var(--warn-bg);
+  --slot-ink: var(--warn);
+
+  /* §3 shape: cards 14 · buttons/inputs 8 · chips 999 */
+  --radius: 14px;
+  --radius-ctl: 8px;
+  --shadow: 0 2px 10px #0006;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 * {
@@ -68,15 +65,16 @@ body {
   margin: 0;
   padding: 0;
   background: var(--bg);
-  color: var(--body-ink);
+  color: var(--txt);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
 }
 
 a {
-  color: var(--accent);
+  color: var(--blue);
   text-decoration: none;
 }
 a:hover {
@@ -88,12 +86,16 @@ button {
   cursor: pointer;
   touch-action: manipulation;
 }
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 2px solid var(--accent);
+/* input idiom: blue focus border, no default outline glow */
+button:focus-visible {
+  outline: 2px solid var(--blue);
   outline-offset: 1px;
+}
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--blue) !important;
 }
 
 input,
@@ -102,6 +104,8 @@ textarea {
   font: inherit;
   color: inherit;
 }
+
+/* ---------- chrome ---------- */
 
 .app-header {
   display: flex;
@@ -115,13 +119,39 @@ textarea {
   z-index: 30;
 }
 
-.brand {
-  font-weight: 750;
-  font-variation-settings: "wdth" 80;
-  letter-spacing: 0.01em;
-  color: var(--ink);
+.brandwrap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
 }
-.brand span {
+/* rbl1 "R" monogram with the orange prime tick */
+.logomark {
+  position: relative;
+  display: inline-block;
+  font-weight: 900;
+  font-size: 21px;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: var(--txt);
+  padding-right: 8px;
+}
+.logomark .prime {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  transform: skewX(-12deg);
+}
+.brand {
+  font-size: 16.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--txt);
+  white-space: nowrap;
+}
+.brand .dot {
   color: var(--accent);
 }
 
@@ -131,27 +161,33 @@ textarea {
 }
 .tab {
   padding: 6px 12px;
-  border-radius: 7px;
-  color: var(--ink-soft);
+  border-radius: var(--radius-ctl);
+  color: var(--muted);
   font-weight: 500;
+  font-size: 13.5px;
   border: none;
   background: none;
+  transition: color 0.15s, background 0.15s;
+}
+.tab:hover {
+  color: var(--blue);
 }
 .tab.active {
-  background: var(--accent-soft);
-  color: var(--ink);
+  background: var(--panel2);
+  color: var(--txt);
   font-weight: 600;
 }
 .tab .count {
   margin-left: 6px;
   background: var(--accent);
-  color: var(--accent-ink);
-  border-radius: 9px;
+  color: #fff;
+  border-radius: 999px;
   padding: 1px 7px;
-  font-size: 11.5px;
-  font-weight: 600;
-  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
 }
+
+/* ---------- toolbar + filters ---------- */
 
 .toolbar {
   display: flex;
@@ -166,17 +202,19 @@ textarea {
   max-width: 380px;
   padding: 7px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
+  border-radius: var(--radius-ctl);
+  background: var(--bg);
+  color: var(--txt);
+  font-size: 14px;
 }
-.search-box:focus {
-  border-color: var(--accent);
+.search-box::placeholder {
+  color: var(--muted);
 }
 
 .seg-toggle {
   display: inline-flex;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-ctl);
   overflow: hidden;
   background: var(--panel);
 }
@@ -184,11 +222,17 @@ textarea {
   border: none;
   background: none;
   padding: 6px 12px;
-  color: var(--ink-soft);
+  color: var(--muted);
+  font-size: 13px;
+  transition: color 0.15s;
+}
+.seg-toggle button:hover {
+  color: var(--blue);
 }
 .seg-toggle button.on {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--panel2);
+  color: var(--txt);
+  font-weight: 600;
 }
 
 .filter-row {
@@ -205,17 +249,23 @@ textarea {
 .dropdown > button.dd-trigger {
   padding: 6px 10px;
   border: 1px solid var(--line);
-  background: var(--panel);
-  border-radius: 8px;
-  color: var(--ink-soft);
+  background: var(--bg);
+  border-radius: var(--radius-ctl);
+  color: var(--muted);
+  font-size: 13px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.dropdown > button.dd-trigger:hover {
+  border-color: var(--blue);
+  color: var(--blue);
 }
 .dropdown > button.dd-trigger.active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--blue);
+  color: var(--blue);
+  background: var(--blue-bg);
   font-weight: 600;
 }
 .dd-menu {
@@ -225,9 +275,9 @@ textarea {
   min-width: 240px;
   max-height: 340px;
   overflow-y: auto;
-  background: var(--panel);
+  background: var(--panel2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-ctl);
   box-shadow: var(--shadow);
   z-index: 40;
   padding: 8px;
@@ -240,7 +290,7 @@ textarea {
   border-bottom: 1px solid var(--line);
   margin-bottom: 6px;
   font-size: 12px;
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 .dd-menu label.dd-item {
   display: flex;
@@ -248,17 +298,20 @@ textarea {
   align-items: center;
   padding: 5px 6px;
   border-radius: 6px;
+  color: var(--txt);
 }
 .dd-menu label.dd-item:hover {
-  background: var(--mute-soft);
+  background: var(--hover);
 }
 .dd-clear {
   border: none;
   background: none;
-  color: var(--accent);
+  color: var(--blue);
   font-size: 12px;
   padding: 4px 6px;
 }
+
+/* ---------- contacts table ---------- */
 
 .table-wrap {
   margin: 8px 20px 80px;
@@ -273,15 +326,14 @@ table.contacts {
   border-collapse: collapse;
   min-width: 980px;
 }
-/* Not sticky: a sticky offset tied to the app-header height caused rows to
-   slide underneath and disappear behind the header bar. */
+/* column headers use the section-label idiom, in --muted */
 table.contacts th {
   text-align: left;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-soft);
+  letter-spacing: 0.09em;
+  color: var(--muted);
   padding: 10px 10px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
@@ -292,12 +344,13 @@ table.contacts th.sortable {
   user-select: none;
 }
 table.contacts th.sortable:hover {
-  color: var(--ink);
+  color: var(--blue);
 }
 table.contacts td {
   padding: 8px 10px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
+  font-size: 13.5px;
 }
 table.contacts tbody tr {
   cursor: pointer;
@@ -306,96 +359,94 @@ table.contacts tbody tr:hover {
   background: var(--hover);
 }
 table.contacts tbody tr.selected {
-  background: var(--accent-soft);
+  background: var(--panel2);
 }
 
 .name-cell .nm {
   font-weight: 650;
-  color: var(--ink);
+  color: var(--txt);
 }
 .name-cell .em {
-  color: var(--ink-soft);
-  font-size: 12px;
-  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 12.5px;
 }
 
+/* tag idiom: small pills, panel2 bg, line border, muted text, UI font */
 .chip {
   display: inline-block;
-  font-family: var(--font-mono);
-  background: var(--mute-soft);
+  background: var(--panel2);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 2px 9px;
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
+  padding: 1px 9px;
+  font-size: 11.5px;
   margin: 1px 3px 1px 0;
   white-space: nowrap;
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 .chip.topic {
-  background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--blue);
+  border-color: var(--line);
 }
 .chip.tag {
-  background: var(--good-soft);
   color: var(--good);
+  border-color: var(--good-border);
 }
 .chip.rh {
-  background: var(--bad-soft);
-  color: var(--bad);
+  color: var(--danger);
+  border-color: var(--danger-border);
   font-weight: 600;
 }
 .chip.review {
-  background: var(--warn-soft);
   color: var(--warn);
+  border-color: var(--warn-border);
   font-weight: 600;
 }
 
+/* status control follows the status-chip idiom: colored text + soft border */
 select.status {
-  border-radius: 6px;
+  border-radius: var(--radius-ctl);
   padding: 3px 6px;
   border: 1px solid var(--line);
   font-size: 12.5px;
-  background: var(--panel);
+  background: var(--bg);
+  color: var(--txt);
 }
 select.status.s-not_reviewed {
-  background: var(--mute-soft);
+  background: var(--panel2);
+  color: var(--muted);
 }
 select.status.s-send_to_kit {
-  background: var(--good-soft);
   color: var(--good);
-  border-color: var(--good);
+  border-color: var(--good-border);
 }
 select.status.s-needs_optin {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--warn);
+  border-color: var(--warn-border);
 }
 select.status.s-exclude {
-  background: var(--mute-soft);
-  color: var(--ink-soft);
+  color: var(--muted);
+  border-color: var(--line);
 }
 select.status.s-synced {
-  background: var(--good);
-  color: var(--accent-ink);
-  border-color: var(--good);
+  color: var(--good);
+  border-color: var(--good-border);
+  background: var(--good-ring);
 }
 select.status.s-bounced {
-  background: var(--bad-soft);
-  color: var(--bad);
-  border-color: var(--bad);
+  color: var(--danger);
+  border-color: var(--danger-border);
 }
 
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 13px;
+  color: var(--txt);
 }
 .dt {
   white-space: nowrap;
-  color: var(--ink-soft);
-  font-size: 12px;
-  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 12.5px;
 }
 
 .pager {
@@ -404,28 +455,38 @@ select.status.s-bounced {
   align-items: center;
   justify-content: flex-end;
   padding: 10px 20px 30px;
-  color: var(--ink-soft);
+  color: var(--muted);
+  font-size: 13px;
 }
 .pager button {
   border: 1px solid var(--line);
   background: var(--panel);
-  border-radius: 7px;
+  color: var(--txt);
+  border-radius: var(--radius-ctl);
   padding: 5px 12px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.pager button:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--blue);
 }
 .pager button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
+/* ---------- bulk action bar ---------- */
+
 .bulk-bar {
   position: fixed;
   bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--ink);
-  color: var(--bg);
-  border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+  background: var(--panel2);
+  color: var(--txt);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   display: flex;
   gap: 8px;
   align-items: center;
@@ -437,41 +498,57 @@ select.status.s-bounced {
 .bulk-bar .bb-count {
   font-weight: 700;
   margin-right: 6px;
-  font-family: var(--font-mono);
 }
 .bulk-bar button {
-  border: 1px solid color-mix(in srgb, var(--bg) 30%, transparent);
-  background: color-mix(in srgb, var(--bg) 10%, transparent);
-  color: var(--bg);
-  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--txt);
+  border-radius: var(--radius-ctl);
   padding: 5px 10px;
   font-size: 12.5px;
+  transition: border-color 0.15s, color 0.15s;
 }
 .bulk-bar button:hover {
-  background: color-mix(in srgb, var(--bg) 20%, transparent);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.bulk-bar button.danger {
+  color: var(--muted);
+}
+.bulk-bar button.danger:hover {
+  border-color: var(--danger-border);
+  color: var(--danger);
 }
 .bulk-bar input {
-  border-radius: 7px;
-  border: 1px solid color-mix(in srgb, var(--bg) 30%, transparent);
-  background: color-mix(in srgb, var(--bg) 12%, transparent);
-  color: var(--bg);
+  border-radius: var(--radius-ctl);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--txt);
   padding: 5px 8px;
   width: 150px;
+  font-size: 12.5px;
 }
 .bulk-bar input::placeholder {
-  color: color-mix(in srgb, var(--bg) 60%, transparent);
+  color: var(--muted);
 }
 .bulk-bar .bb-close {
   border: none;
   background: none;
+  color: var(--muted);
   font-size: 16px;
   padding: 2px 6px;
 }
+.bulk-bar .bb-close:hover {
+  color: var(--txt);
+  border: none;
+}
+
+/* ---------- contact drawer ---------- */
 
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(10, 16, 22, 0.35);
+  background: #0009;
   z-index: 60;
 }
 .drawer {
@@ -482,7 +559,7 @@ select.status.s-bounced {
   width: min(480px, 94vw);
   background: var(--panel);
   border-left: 1px solid var(--line);
-  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.12);
+  box-shadow: -8px 0 30px #0008;
   z-index: 70;
   overflow-y: auto;
   padding: 20px;
@@ -490,53 +567,57 @@ select.status.s-bounced {
 .drawer h2 {
   margin: 0 0 2px;
   font-size: 18px;
-  color: var(--ink);
+  color: var(--txt);
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .drawer .sub {
-  color: var(--ink-soft);
+  color: var(--muted);
   margin-bottom: 14px;
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
 }
 .drawer .field {
   margin-bottom: 12px;
 }
 .drawer .field .lbl {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-soft);
+  letter-spacing: 0.09em;
+  color: var(--muted);
   margin-bottom: 3px;
 }
 .drawer textarea,
 .drawer input[type="text"] {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-ctl);
   padding: 7px 9px;
-  background: var(--panel);
+  background: var(--bg);
+  color: var(--txt);
 }
 .drawer textarea {
   min-height: 70px;
   resize: vertical;
 }
 .drawer .ro {
-  color: var(--ink);
+  color: var(--txt);
   word-break: break-word;
+  font-size: 14px;
 }
+/* raw import payload: genuinely raw data, the one sanctioned mono use */
 .drawer .raw {
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ink-soft);
-  background: var(--mute-soft);
-  border-radius: 6px;
+  color: var(--muted);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-ctl);
   padding: 8px;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 200px;
   overflow-y: auto;
-  font-family: var(--font-mono);
 }
 .drawer .close-x {
   position: absolute;
@@ -545,46 +626,54 @@ select.status.s-bounced {
   border: none;
   background: none;
   font-size: 20px;
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 .drawer .save-btn {
   background: var(--accent);
-  color: var(--accent-ink);
+  color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-ctl);
   padding: 8px 16px;
-  font-weight: 650;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+.drawer .save-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
 }
 .drawer .save-btn:disabled {
   opacity: 0.5;
 }
+/* danger idiom: transparent, muted, line border; hover red border + text */
 .drawer .drawer-delete {
-  background: none;
-  color: var(--bad);
-  border: 1px solid var(--bad);
-  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-ctl);
   padding: 8px 16px;
-  font-weight: 650;
+  font-weight: 600;
+  transition: border-color 0.15s, color 0.15s;
 }
 .drawer .drawer-delete:hover {
-  background: var(--bad-soft);
+  border-color: var(--danger-border);
+  color: var(--danger);
 }
 .drawer .drawer-restore {
-  background: var(--good);
-  color: var(--accent-ink);
-  border: none;
-  border-radius: 8px;
+  background: transparent;
+  color: var(--good);
+  border: 1px solid var(--good-border);
+  border-radius: var(--radius-ctl);
   padding: 8px 16px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .drawer .drawer-delete:disabled,
 .drawer .drawer-restore:disabled {
   opacity: 0.5;
 }
 .drawer .rh-warning {
-  background: var(--bad-soft);
-  color: var(--bad);
-  border-radius: 6px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-ctl);
   padding: 8px 10px;
   font-size: 12.5px;
   margin-bottom: 12px;
@@ -592,9 +681,11 @@ select.status.s-bounced {
 
 .empty-state {
   text-align: center;
-  color: var(--ink-soft);
+  color: var(--muted);
   padding: 60px 20px;
 }
+
+/* ---------- sign-in ---------- */
 
 .signin-wrap {
   min-height: 100vh;
@@ -607,7 +698,7 @@ select.status.s-bounced {
 .signin-card {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 36px 42px;
   text-align: center;
@@ -615,27 +706,32 @@ select.status.s-bounced {
 .signin-card h1 {
   margin: 0 0 6px;
   font-size: 22px;
-  color: var(--ink);
-  font-weight: 750;
-  font-variation-settings: "wdth" 80;
+  color: var(--txt);
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 .signin-card p {
-  color: var(--ink-soft);
+  color: var(--muted);
   margin: 0 0 20px;
 }
 .google-btn {
   background: var(--accent);
-  color: var(--accent-ink);
+  color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-ctl);
   padding: 10px 22px;
-  font-weight: 650;
+  font-weight: 600;
   font-size: 14px;
+  transition: background 0.15s;
+}
+.google-btn:hover {
+  background: var(--accent-soft);
 }
 .signin-error {
-  color: var(--bad);
-  background: var(--bad-soft);
-  border-radius: 8px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-ctl);
   padding: 10px 16px;
   max-width: 420px;
   text-align: center;
@@ -644,14 +740,11 @@ select.status.s-bounced {
 .loading-bar {
   padding: 30px;
   text-align: center;
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 
 /* ---- Mobile: collapse the wide table into stacked cards ---- */
 @media (max-width: 720px) {
-  body {
-    font-size: 15px;
-  }
   .app-header {
     flex-wrap: wrap;
     gap: 10px 16px;
@@ -689,13 +782,12 @@ select.status.s-bounced {
     position: relative;
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 10px;
-    box-shadow: var(--shadow);
+    border-radius: var(--radius);
     margin-bottom: 10px;
     padding: 12px 14px 10px;
   }
   table.contacts tr.selected {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--blue);
   }
   table.contacts td {
     display: flex;
@@ -706,17 +798,16 @@ select.status.s-bounced {
     border: none;
     text-align: right;
   }
-  /* label each value with its column name */
+  /* label each value with its column name (section-label idiom) */
   table.contacts td::before {
     content: attr(data-label);
     flex: 0 0 40%;
     text-align: left;
-    font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 10.5px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--ink-soft);
-    font-weight: 600;
+    letter-spacing: 0.07em;
+    color: var(--muted);
   }
   /* hide empty rows so cards stay compact */
   table.contacts td:empty {
@@ -786,7 +877,6 @@ select.status.s-bounced {
     right: 8px;
     transform: none;
     max-width: none;
-    border-radius: 12px;
     justify-content: center;
   }
   .bulk-bar input {
@@ -803,18 +893,17 @@ select.status.s-bounced {
   }
 }
 
-/* ============ Sequence Desk (matches the original prototype) ============ */
+/* ==================== Sequence Desk ==================== */
 .sdesk {
   min-height: 100vh;
   background: var(--bg);
-  color: var(--body-ink);
+  color: var(--txt);
   line-height: 1.55;
 }
 .sdesk .savestate {
   margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-soft);
+  font-size: 12px;
+  color: var(--muted);
 }
 .sdesk .wrap {
   max-width: 44rem;
@@ -822,26 +911,26 @@ select.status.s-bounced {
   padding: 2rem 1rem 5rem;
 }
 .sdesk h1 {
-  font-family: var(--font-sans);
-  font-variation-settings: "wdth" 72;
-  font-weight: 750;
-  font-size: clamp(1.9rem, 6vw, 2.6rem);
-  color: var(--ink);
+  font-weight: 800;
+  font-size: clamp(1.9rem, 6vw, 2.4rem);
+  color: var(--txt);
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.03em;
 }
 .sdesk .tagline {
   margin: 0.3rem 0 0;
-  color: var(--ink-soft);
+  color: var(--muted);
   font-size: 0.92rem;
   max-width: 60ch;
 }
 .sdesk .howto {
   margin: 1.5rem 0 0;
   padding: 1rem 1.2rem;
-  background: var(--accent-soft);
-  border-radius: 0.5rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   font-size: 0.88rem;
+  color: var(--muted);
 }
 .sdesk .howto p {
   margin: 0;
@@ -850,19 +939,20 @@ select.status.s-bounced {
   margin-top: 0.4rem;
 }
 .sdesk .howto strong {
-  color: var(--ink);
+  color: var(--txt);
   font-weight: 650;
 }
 
 .sdesk section.zone {
   margin-top: 2.6rem;
 }
+/* zone headings use the section-label idiom, in --accent (identity) */
 .sdesk .zone > h2 {
-  font-size: 0.76rem;
-  letter-spacing: 0.14em;
+  font-size: 12px;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--ink-soft);
-  font-weight: 650;
+  color: var(--accent);
+  font-weight: 700;
   margin: 0 0 0.9rem;
   padding-bottom: 0.45rem;
   border-bottom: 1px solid var(--line);
@@ -872,41 +962,57 @@ select.status.s-bounced {
   justify-content: space-between;
   align-items: center;
   margin: 0 0 0.9rem;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--ink-soft);
+  font-size: 12px;
+  color: var(--muted);
 }
 .sdesk .list {
   display: grid;
   gap: 1.25rem;
 }
 
-/* generic button first; specific variants after */
+/* generic button = secondary idiom; variants after */
 .sdesk button {
   font-family: var(--font-sans);
   font-size: 0.85rem;
   font-weight: 600;
-  border-radius: 0.45rem;
+  border-radius: var(--radius-ctl);
   padding: 0.55rem 1rem;
   cursor: pointer;
   border: 1px solid var(--line);
   background: var(--panel);
-  color: var(--ink);
+  color: var(--txt);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.sdesk button:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--blue);
 }
 .sdesk button.primary {
   background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
+  border: none;
+  color: #fff;
+}
+.sdesk button.primary:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: #fff;
 }
 .sdesk button.danger {
-  color: var(--bad);
-  border-color: var(--bad);
+  color: var(--muted);
+  border-color: var(--line);
   background: transparent;
+}
+.sdesk button.danger:hover:not(:disabled) {
+  border-color: var(--danger-border);
+  color: var(--danger);
 }
 .sdesk button.quiet {
   border-color: transparent;
-  color: var(--ink-soft);
+  color: var(--muted);
   background: transparent;
+}
+.sdesk button.quiet:hover:not(:disabled) {
+  border-color: transparent;
+  color: var(--blue);
 }
 .sdesk button:disabled {
   opacity: 0.5;
@@ -916,20 +1022,22 @@ select.status.s-bounced {
   border: none;
   background: none;
   padding: 6px 12px;
-  border-radius: 7px;
+  border-radius: var(--radius-ctl);
   font-weight: 500;
-  color: var(--ink-soft);
+  font-size: 13.5px;
+  color: var(--muted);
 }
 .sdesk .tab.active {
-  background: var(--accent-soft);
-  color: var(--ink);
+  background: var(--panel2);
+  color: var(--txt);
   font-weight: 600;
 }
 
+/* card idiom: panel bg, line border, 14px radius */
 .sdesk .card {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 0.6rem;
+  border-radius: var(--radius);
   padding: 1.1rem 1.2rem 1.2rem;
   min-width: 0;
 }
@@ -947,99 +1055,109 @@ select.status.s-bounced {
 }
 .sdesk .card-head h3 {
   margin: 0;
-  color: var(--ink);
+  color: var(--txt);
   font-size: 1.15rem;
-  font-weight: 720;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   flex: 1 1 auto;
 }
 .sdesk .test-tag {
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  letter-spacing: 0.05em;
   color: var(--warn);
-  background: var(--warn-soft);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
   border-radius: 999px;
-  padding: 0.2rem 0.55rem;
+  padding: 0.15rem 0.55rem;
   margin-left: 0.5rem;
   vertical-align: middle;
 }
+/* status chip idiom: pill, 11-12px, line border, colored text + soft border */
 .sdesk .chip {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   border-radius: 999px;
-  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--line);
+  padding: 0.25rem 0.7rem;
   white-space: nowrap;
   background: none;
-  color: inherit;
+  color: var(--muted);
   margin: 0;
 }
 .sdesk .chip.st-pending,
 .sdesk .chip.st-held {
   color: var(--warn);
-  background: var(--warn-soft);
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
 }
 .sdesk .chip.st-approved,
 .sdesk .chip.st-active,
 .sdesk .chip.st-done,
-.sdesk .chip.st-replied,
+.sdesk .chip.st-replied {
+  color: var(--good);
+  border-color: var(--good-border);
+}
 .sdesk .chip.st-template {
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--muted);
+  border-color: var(--line);
 }
 .sdesk .chip.st-stopped {
-  color: var(--bad);
-  background: var(--bad-soft);
+  color: var(--danger);
+  border-color: var(--danger-border);
 }
 .sdesk .chip.st-saved,
 .sdesk .chip.st-archived {
-  color: var(--ink-soft);
-  background: var(--bg);
-  border: 1px solid var(--line);
+  color: var(--muted);
+  border-color: var(--line);
 }
 .sdesk .firmline {
   margin: 0.35rem 0 0;
   font-size: 0.9rem;
+  color: var(--muted);
 }
+/* thread/message ids: genuinely code-like, the sanctioned mono use */
 .sdesk .metaline {
   margin: 0.3rem 0 0;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--ink-soft);
+  font-size: 12px;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .sdesk .metaline a {
-  color: var(--accent);
+  color: var(--blue);
 }
 .sdesk .holdnote {
   margin: 0.9rem 0 0;
   padding: 0.7rem 0.9rem;
-  background: var(--warn-soft);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
   color: var(--warn);
-  border-radius: 0.4rem;
+  border-radius: var(--radius-ctl);
   font-size: 0.85rem;
 }
+/* the hold has been satisfied: same shape, positive idiom */
 .sdesk .readynote {
   margin: 0.9rem 0 0;
   padding: 0.7rem 0.9rem;
-  background: var(--good-soft);
-  border: 1px solid var(--good);
+  background: var(--good-ring);
+  border: 1px solid var(--good-border);
   color: var(--good);
-  border-radius: var(--radius);
+  border-radius: var(--radius-ctl);
   font-size: 0.85rem;
 }
 .sdesk .bg-block {
   margin: 0.9rem 0 0;
   font-size: 0.88rem;
+  color: var(--muted);
 }
 .sdesk .bg-block .lbl {
   display: block;
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
+  font-size: 12px;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--accent);
-  font-weight: 650;
+  font-weight: 700;
   margin-bottom: 0.25rem;
 }
 
@@ -1054,7 +1172,7 @@ select.status.s-bounced {
   display: flex;
   align-items: baseline;
   gap: 0.6rem;
-  color: var(--ink);
+  color: var(--txt);
   font-weight: 600;
   font-size: 0.92rem;
 }
@@ -1063,7 +1181,7 @@ select.status.s-bounced {
 }
 .sdesk details.seq summary::after {
   content: "▸";
-  color: var(--ink-soft);
+  color: var(--muted);
   font-size: 0.8rem;
   margin-left: auto;
 }
@@ -1088,7 +1206,7 @@ select.status.s-bounced {
 .sdesk .step-head h4 {
   margin: 0;
   font-size: 0.9rem;
-  color: var(--ink);
+  color: var(--txt);
   font-weight: 650;
   display: flex;
   align-items: baseline;
@@ -1101,12 +1219,12 @@ select.status.s-bounced {
   font-variant-numeric: tabular-nums;
 }
 .sdesk .step-head .dot {
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 .sdesk .t {
   font: inherit;
   font-weight: 650;
-  color: var(--ink);
+  color: var(--txt);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 0.25rem;
@@ -1117,20 +1235,18 @@ select.status.s-bounced {
 .sdesk .t:hover:not(:disabled),
 .sdesk .t:focus {
   border-color: var(--line);
-  background: var(--panel);
+  background: var(--panel2);
 }
 .sdesk .t:disabled {
-  color: var(--ink);
+  color: var(--txt);
 }
 .sdesk .sentmark {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--accent);
+  font-size: 12px;
+  color: var(--good);
 }
 .sdesk .wait {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--ink-soft);
+  font-size: 12px;
+  color: var(--muted);
   margin-left: auto;
   display: inline-flex;
   align-items: baseline;
@@ -1138,11 +1254,11 @@ select.status.s-bounced {
   white-space: nowrap;
 }
 .sdesk .wait-days {
-  font-family: var(--font-mono);
   font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
   width: 2.6rem;
   text-align: center;
-  color: var(--ink);
+  color: var(--txt);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 0.3rem;
@@ -1153,34 +1269,53 @@ select.status.s-bounced {
   padding: 0.15rem 0.55rem;
   font-size: 0.8rem;
   line-height: 1.2;
-  color: var(--ink-soft);
+  color: var(--muted);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 0.3rem;
 }
 .sdesk .starbox button.on {
   color: var(--warn);
-  border-color: var(--warn);
+  border-color: var(--warn-border);
 }
 .sdesk .mv {
   display: inline-flex;
   gap: 0.25rem;
 }
 .sdesk .mv button:hover {
-  color: var(--ink);
+  color: var(--blue);
+}
+/* Removing an email is destructive, so the control stays quiet until it is
+   armed, then says plainly what the next tap does. */
+.sdesk .rm button {
+  padding: 0.15rem 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+}
+.sdesk .rm button:hover {
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+.sdesk .rm button.armed {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 .sdesk .subj {
   margin: 0 0 0.5rem;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--ink-soft);
+  font-size: 0.82rem;
+  color: var(--muted);
   display: flex;
   align-items: baseline;
   gap: 0.4rem;
 }
 .sdesk .subj .s {
   font: inherit;
-  color: var(--ink);
+  color: var(--txt);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 0.25rem;
@@ -1191,13 +1326,14 @@ select.status.s-bounced {
 .sdesk .subj .s:hover:not(:disabled),
 .sdesk .subj .s:focus {
   border-color: var(--line);
-  background: var(--panel);
+  background: var(--panel2);
 }
+/* email letters read in the UI face (no serif in the system) */
 .sdesk .letter {
   display: block;
-  font-family: var(--font-serif);
-  font-size: 0.98rem;
-  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  color: var(--txt);
   line-height: 1.6;
   width: 100%;
   max-width: 58ch;
@@ -1210,24 +1346,24 @@ select.status.s-bounced {
 .sdesk .letter:hover:not(:disabled),
 .sdesk .letter:focus {
   border-color: var(--line);
-  background: var(--panel);
+  background: var(--panel2);
 }
 .sdesk .letter:disabled {
   opacity: 0.75;
 }
 .sdesk .slot-note {
   margin-top: 0.4rem;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  background: var(--slot-bg);
-  color: var(--slot-ink);
+  font-size: 12px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1px solid var(--warn-border);
   border-radius: 0.3rem;
   padding: 0.35rem 0.6rem;
   display: inline-block;
 }
 .sdesk .edit-hint {
   font-size: 0.74rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   margin: 0.6rem 0 0;
 }
 .sdesk .send-now {
@@ -1236,16 +1372,20 @@ select.status.s-bounced {
   padding-top: 0.9rem;
   border-top: 1px solid var(--line);
 }
+/* secondary CTA: blue = interaction */
 .sdesk .send-now button {
   background: var(--panel);
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 0.45rem;
-  font-weight: 650;
+  color: var(--blue);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-ctl);
+  font-weight: 600;
+}
+.sdesk .send-now button:hover:not(:disabled) {
+  border-color: var(--blue);
 }
 .sdesk .send-note {
   font-size: 0.78rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   margin: 0.5rem 0 0;
 }
 .sdesk .actions {
@@ -1257,7 +1397,7 @@ select.status.s-bounced {
 .sdesk footer {
   margin-top: 3rem;
   font-size: 0.78rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   max-width: 60ch;
 }
 
@@ -1269,7 +1409,7 @@ select.status.s-bounced {
 }
 .sdesk .new-hint {
   font-size: 0.78rem;
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 .sdesk .new-form {
   display: grid;
@@ -1285,17 +1425,18 @@ select.status.s-bounced {
 .sdesk .new-form textarea {
   font-family: var(--font-sans);
   font-size: 0.9rem;
-  color: var(--ink);
-  background: var(--panel);
+  color: var(--txt);
+  background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 0.45rem;
+  border-radius: var(--radius-ctl);
   padding: 0.55rem 0.7rem;
   width: 100%;
 }
 .sdesk .err {
-  color: var(--bad);
-  background: var(--bad-soft);
-  border-radius: 0.4rem;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-ctl);
   padding: 0.5rem 0.7rem;
   font-size: 0.85rem;
   margin: 0.6rem 0;
@@ -1308,6 +1449,7 @@ select.status.s-bounced {
     display: none;
   }
 }
+
 /* "next up" marker on the lowest unsent step of a live sequence */
 .sdesk .next-pill {
   font-size: 10.5px;
@@ -1434,7 +1576,7 @@ select.status.s-bounced {
   gap: 0.35rem 0.6rem;
   align-items: baseline;
   font-size: 0.8rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--line);
 }
@@ -1444,7 +1586,7 @@ select.status.s-bounced {
 .sdesk .ev-at {
   font-family: var(--font-mono);
   font-size: 0.72rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   white-space: nowrap;
 }
 .sdesk .ev-actor {
@@ -1454,7 +1596,7 @@ select.status.s-bounced {
   border-radius: 999px;
   padding: 0.1rem 0.5rem;
   border: 1px solid var(--line);
-  color: var(--ink-soft);
+  color: var(--muted);
   white-space: nowrap;
 }
 .sdesk .ev-actor.a-sync {
@@ -1462,13 +1604,13 @@ select.status.s-bounced {
   border-color: var(--accent);
 }
 .sdesk .ev-actor.a-system {
-  color: var(--info);
-  border-color: var(--info);
+  color: var(--blue);
+  border-color: var(--blue);
 }
 .sdesk .ev-what {
   flex: 1 1 12rem;
   min-width: 0;
-  color: var(--ink);
+  color: var(--txt);
   overflow-wrap: anywhere;
 }
 .sdesk .ev-what b {
@@ -1484,7 +1626,7 @@ select.status.s-bounced {
   user-select: none;
 }
 .sdesk .zone-toggle:hover {
-  color: var(--ink);
+  color: var(--txt);
 }
 .sdesk .zone-count {
   margin-left: auto;
@@ -1496,7 +1638,7 @@ select.status.s-bounced {
 .sdesk .caret {
   display: inline-block;
   width: 0.9rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   font-size: 0.75rem;
 }
 
@@ -1512,25 +1654,25 @@ select.status.s-bounced {
   min-width: 0;
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-ctl);
   background: var(--bg);
-  color: var(--ink);
+  color: var(--txt);
   font-size: 0.85rem;
 }
 .sdesk .arch-search::placeholder {
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 .sdesk .arch-status {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-ctl);
   background: var(--bg);
-  color: var(--ink);
+  color: var(--txt);
   font-size: 0.85rem;
 }
 .sdesk .arch-count {
   font-size: 0.75rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   margin-left: auto;
   white-space: nowrap;
 }
@@ -1552,7 +1694,7 @@ select.status.s-bounced {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.09em;
-  color: var(--ink-soft);
+  color: var(--muted);
   padding: 0.6rem 0.7rem;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
@@ -1561,7 +1703,7 @@ select.status.s-bounced {
   padding: 0.6rem 0.7rem;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
-  color: var(--ink);
+  color: var(--txt);
 }
 .sdesk .arch-table tbody tr:not(.arch-detail) {
   cursor: pointer;
@@ -1579,7 +1721,7 @@ select.status.s-bounced {
   white-space: nowrap;
 }
 .sdesk .arch-email {
-  color: var(--ink-soft);
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .sdesk .arch-table .chip.status {
@@ -1634,7 +1776,7 @@ select.status.s-bounced {
     font-weight: 700;
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: var(--ink-soft);
+    color: var(--muted);
   }
   /* the name is the card title: full width, no label */
   .sdesk .arch-table td[data-label="Name"] {
@@ -1706,7 +1848,7 @@ select.status.s-bounced {
   align-items: center;
   gap: 0.45rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-ctl);
   padding: 0.15rem 0.15rem 0.15rem 0.6rem;
   background: var(--bg);
 }
@@ -1715,13 +1857,13 @@ select.status.s-bounced {
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--muted);
   white-space: nowrap;
 }
 .sdesk .status-pick select {
   border: none;
   background: none;
-  color: var(--ink);
+  color: var(--txt);
   font-size: 0.85rem;
   font-weight: 600;
   padding: 0.45rem 0.4rem;
@@ -1759,7 +1901,7 @@ select.status.s-bounced {
 
 /* a reply is the loudest thing that can happen to a sequence: say so */
 .sdesk .card.status-replied {
-  border-color: var(--good);
+  border-color: var(--good-border);
   box-shadow: inset 3px 0 0 var(--good);
 }
 .sdesk .repliednote {
@@ -1768,14 +1910,14 @@ select.status.s-bounced {
   align-items: flex-start;
   margin: 0.9rem 0 0;
   padding: 0.75rem 0.9rem;
-  background: var(--good-soft);
-  border: 1px solid var(--good);
-  border-radius: var(--radius);
+  background: var(--good-ring);
+  border: 1px solid var(--good-border);
+  border-radius: var(--radius-ctl);
   font-size: 0.87rem;
-  color: var(--ink);
+  color: var(--txt);
 }
 .sdesk .repliednote b {
-  color: var(--ink);
+  color: var(--txt);
 }
 .sdesk .rn-flag {
   flex: 0 0 auto;
@@ -1784,7 +1926,7 @@ select.status.s-bounced {
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--good);
-  border: 1px solid var(--good);
+  border: 1px solid var(--good-border);
   border-radius: 999px;
   padding: 0.2rem 0.6rem;
   white-space: nowrap;
@@ -1792,9 +1934,9 @@ select.status.s-bounced {
 .sdesk .ackgate {
   margin: 0.9rem 0 0;
   padding: 0.85rem 0.9rem;
-  background: var(--bad-soft);
-  border: 1px solid var(--bad);
-  border-radius: var(--radius);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-ctl);
   font-size: 0.87rem;
 }
 .sdesk .ackgate p {
@@ -1812,7 +1954,7 @@ select.status.s-bounced {
   width: 20px;
   height: 20px;
   flex: 0 0 auto;
-  accent-color: var(--bad);
+  accent-color: var(--danger);
 }
 .sdesk .ackgate .actions {
   margin-top: 0.8rem;
@@ -1833,8 +1975,8 @@ select.status.s-bounced {
 /* a queued send reads as a settled state, not a fresh button */
 .sdesk .send-next.queued,
 .sdesk .send-next.queued:disabled {
-  background: var(--good-soft);
-  border: 1px solid var(--good);
+  background: var(--good-ring);
+  border: 1px solid var(--good-border);
   color: var(--good);
   opacity: 1;
   cursor: default;
@@ -1847,19 +1989,209 @@ select.status.s-bounced {
   margin-left: -0.2rem;
 }
 .sdesk .step.sent .letter {
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 .sdesk .step.sent .t:disabled {
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 .sdesk .sentmark {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--good);
-  background: var(--good-soft);
-  border: 1px solid var(--good);
+  background: var(--good-ring);
+  border: 1px solid var(--good-border);
   border-radius: 999px;
   padding: 0.2rem 0.6rem;
   white-space: nowrap;
+}
+
+/* ---- Running board -------------------------------------------------- */
+/* At a couple of hundred live sequences a stack of cards stops being a
+   board and becomes a scroll. The tallies answer "what is on me?" first,
+   the table answers "where is everyone?", and a row still opens the same
+   card, because reading and editing one sequence never got worse. */
+.sdesk .tallies {
+  display: flex;
+  gap: 0.6rem;
+  margin: 0 0 0.9rem;
+  flex-wrap: wrap;
+}
+.sdesk .tally {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.55rem 0.9rem;
+  min-width: 7.5rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  text-align: left;
+}
+.sdesk .tally:hover {
+  border-color: var(--blue);
+}
+.sdesk .tally.on {
+  border-color: var(--blue);
+  background: var(--blue-ring, var(--panel));
+  box-shadow: inset 0 0 0 1px var(--blue);
+}
+.sdesk .tally .n {
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.1;
+  color: var(--fg);
+}
+.sdesk .tally .k {
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* only colour the count when there is actually something waiting */
+.sdesk .tally.hot .n {
+  color: var(--warn);
+}
+
+/* what happens next, one phrase, colour-coded by who it is waiting on */
+.sdesk .nextchip {
+  display: inline-block;
+  padding: 0.12rem 0.5rem;
+  border-radius: 0.3rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.sdesk .nextchip.t-needs {
+  color: var(--warn);
+  border-color: var(--warn-border);
+  background: var(--warn-ring, transparent);
+}
+.sdesk .nextchip.t-go {
+  color: var(--good);
+  border-color: var(--good-border);
+  background: var(--good-ring);
+}
+.sdesk .nextchip.t-wait {
+  color: var(--muted);
+  border-color: var(--line);
+}
+.sdesk .nextchip.t-idle {
+  color: var(--muted);
+}
+/* a hairline down the left of any row that is waiting on you */
+.sdesk .run-table tbody tr.tone-needs > td:first-child {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.sdesk .prog {
+  display: inline-block;
+  width: 2.6rem;
+  height: 3px;
+  margin-right: 0.45rem;
+  vertical-align: middle;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.sdesk .prog-fill {
+  display: block;
+  height: 100%;
+  background: var(--good);
+}
+/* The running board is a scanning surface, so every row is exactly one line
+   high: nothing wraps, long values clip with an ellipsis, and the eye can
+   run straight down the Next column. */
+.sdesk .run-table {
+  table-layout: fixed;
+}
+.sdesk .run-table th,
+.sdesk .run-table td {
+  padding: 0.42rem 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sdesk .run-table col.c-name { width: 21%; }
+.sdesk .run-table col.c-contact { width: 25%; }
+.sdesk .run-table col.c-next { width: 24%; }
+.sdesk .run-table col.c-sent { width: 17%; }
+.sdesk .run-table col.c-last { width: 12%; }
+/* the count must never be the thing that clips */
+.sdesk .run-table th.num,
+.sdesk .run-table td.num {
+  overflow: visible;
+  text-overflow: clip;
+}
+.sdesk .run-table td[data-label="Name"] {
+  font-weight: 550;
+}
+/* the wrap-anywhere that suits the archive would double every row height here */
+.sdesk .run-table .arch-email {
+  overflow-wrap: normal;
+}
+
+@media (max-width: 720px) {
+  .sdesk .tallies {
+    gap: 0.4rem;
+  }
+  .sdesk .tally {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0.5rem 0.6rem;
+  }
+  .sdesk .tally .n {
+    font-size: 1.15rem;
+  }
+  .sdesk .tally .k {
+    font-size: 0.66rem;
+  }
+  /* The archive can afford a stacked block per row; a board holding two
+     hundred cannot. On a phone each running row is two tight lines: who,
+     and what happens next. Contact and last-sent are one tap away in the
+     card, so they come out of the scan entirely. */
+  .sdesk .run-table td[data-label="Firm"],
+  .sdesk .run-table td[data-label="Last"] {
+    display: none;
+  }
+  .sdesk .run-table td::before {
+    display: none;
+  }
+  .sdesk .run-table tbody tr:not(.arch-detail) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.7rem;
+    row-gap: 0.25rem;
+    margin-bottom: 0.45rem;
+    padding: 0.6rem 0.75rem;
+  }
+  .sdesk .run-table td {
+    display: block;
+    padding: 0;
+    text-align: left;
+  }
+  .sdesk .run-table td[data-label="Name"] {
+    grid-column: 1;
+    font-size: 0.95rem;
+    margin-bottom: 0;
+  }
+  .sdesk .run-table td[data-label="Next"] {
+    grid-column: 1;
+  }
+  .sdesk .run-table td.num {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    text-align: right;
+    white-space: nowrap;
+  }
+  /* the stacked mobile rows lose a left border, so mark the row itself */
+  .sdesk .run-table tbody tr.tone-needs > td:first-child {
+    box-shadow: none;
+  }
+  .sdesk .run-table tbody tr.tone-needs {
+    border-left: 3px solid var(--warn);
+  }
 }

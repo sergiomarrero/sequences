@@ -3,10 +3,12 @@ import { sequencesCaller } from "@/lib/apiAuth";
 import { supabase } from "@/lib/supabase";
 import {
   SequenceError,
+  deleteStep,
   logEvent,
   moveStep,
   refreshHoldState,
   STEP_EDITABLE_FIELDS,
+  unwrapHardBreaks,
   unwrapTrackingUrls,
 } from "@/lib/sequences";
 
@@ -71,7 +73,17 @@ export async function PATCH(
         if (typeof body[f] !== "string" || !body[f].trim()) {
           return NextResponse.json({ error: `${f} cannot be empty` }, { status: 400 });
         }
-        update[f] = unwrapTrackingUrls(body[f]);
+        // Every body gets unwrapped, whoever sent it. Scoping this to the
+        // sync caller was too clever: the editor posts the whole textarea
+        // on every save, so a browser holding a stale hard-wrapped copy
+        // writes those breaks straight back over text already cleaned.
+        // unwrapHardBreaks only touches a break whose line was already
+        // full, so a deliberate short line, a signoff and a list item all
+        // survive; to force a break, leave a blank line.
+        update[f] =
+          f === "body"
+            ? unwrapHardBreaks(unwrapTrackingUrls(body[f]))
+            : unwrapTrackingUrls(body[f]);
       } else {
         update[f] =
           typeof body[f] === "string" ? unwrapTrackingUrls(body[f]) : null;
@@ -131,6 +143,32 @@ export async function PATCH(
     const status = e instanceof SequenceError ? e.status : 500;
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "update failed" },
+      { status },
+    );
+  }
+}
+
+// DELETE removes an unsent step and closes the gap behind it, so a
+// sequence can be shorter than the template it was drafted from.
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; stepId: string }> },
+) {
+  const caller = await sequencesCaller(req);
+  if (!caller) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const { id, stepId } = await params;
+  if (!UUID_RE.test(id) || !UUID_RE.test(stepId)) {
+    return NextResponse.json({ error: "bad id" }, { status: 400 });
+  }
+  try {
+    await deleteStep(id, stepId);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    const status = e instanceof SequenceError ? e.status : 500;
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "delete failed" },
       { status },
     );
   }
