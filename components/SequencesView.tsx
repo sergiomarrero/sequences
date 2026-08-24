@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type {
   Sequence,
   SequenceEvent,
+  SequenceFact,
   SequenceStatus,
   SequenceStep,
   SequenceTemplateStep,
@@ -17,6 +18,71 @@ function fmtStamp(v: string): string {
 }
 
 // Everything that has happened to this sequence, newest first. Diagnostic,
+// The round-level facts panel. Fill each once; every step that references
+// {{key}} resolves it at send time, so 200 sequences update together.
+function FactsPanel({
+  facts,
+  save,
+}: {
+  facts: SequenceFact[];
+  save: (key: string, url: string, patch: Record<string, unknown>) => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const v: Record<string, string> = {};
+    for (const f of facts) v[f.key] = f.value;
+    setValues(v);
+  }, [facts]);
+
+  if (!facts.length) {
+    return (
+      <section className="zone">
+        <h2>Round facts</h2>
+        <p className="edit-hint">
+          Facts are not set up yet: run{" "}
+          <code>db/migrations/0011_crm_sequence_facts.sql</code> in Supabase
+          and reload. Then fields like &ldquo;where the round stands&rdquo; are
+          filled once here instead of once per sequence.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="zone">
+      <h2>Round facts</h2>
+      <p className="edit-hint facts-hint">
+        Filled once, used everywhere: any email containing a{" "}
+        <code>{"{{token}}"}</code> gets the current value at send time. An
+        empty fact holds every email that needs it, exactly like an unfilled
+        [bracket].
+      </p>
+      <div className="facts">
+        {facts.map((f) => (
+          <label key={f.key} className="fact">
+            <span className="fact-label">
+              {f.label}
+              <code className="fact-token">{`{{${f.key}}}`}</code>
+            </span>
+            <textarea
+              rows={2}
+              value={values[f.key] ?? ""}
+              placeholder="Empty: every email that needs this is held"
+              onChange={(e) => {
+                setValues((v) => ({ ...v, [f.key]: e.target.value }));
+                save(`fact:${f.key}`, "/api/sequences/facts", {
+                  key: f.key,
+                  value: e.target.value,
+                });
+              }}
+            />
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // not decorative: when a card misbehaves this is the record of what was
 // actually asked of it and what the server did in response.
 function ActivityLog({ seq }: { seq: Sequence }) {
@@ -131,11 +197,23 @@ function chipText(seq: Sequence): string {
 
 // The slots still blocking a step. Shared by the card and the running board
 // so both agree on what "needs input" means.
-function slotsIn(step: SequenceStep | undefined): string[] {
+const FACT_TOKEN = /\{\{\s*([a-z0-9_]+)\s*\}\}/gi;
+
+function slotsIn(
+  step: SequenceStep | undefined,
+  facts: Record<string, string> = {},
+): string[] {
   if (!step) return [];
   const text =
     step.position === 1 ? `${step.subject ?? ""}\n${step.body}` : step.body;
-  return text.match(/\[[^\]]+\]/g) ?? [];
+  // [bracketed] text is a per-sequence slot; a {{token}} whose shared fact is
+  // still empty blocks the same way, but is fixed once in the facts panel.
+  const slots: string[] = text.match(/\[[^\]]+\]/g) ?? [];
+  for (const m of text.matchAll(FACT_TOKEN)) {
+    const v = facts[m[1].toLowerCase()];
+    if (!v || !v.trim()) slots.push(m[0]);
+  }
+  return slots;
 }
 
 function firstUnsent(seq: Sequence): SequenceStep | undefined {
@@ -170,7 +248,10 @@ function businessDaysSince(iso: string): number {
 // One line answering "what happens next, and is it on me?". `rank` sorts the
 // running board so anything waiting on Sergio floats to the top.
 type NextTone = "needs" | "go" | "wait" | "idle";
-function nextAction(seq: Sequence): {
+function nextAction(
+  seq: Sequence,
+  facts: Record<string, string> = {},
+): {
   label: string;
   tone: NextTone;
   rank: number;
@@ -178,7 +259,7 @@ function nextAction(seq: Sequence): {
   if (seq.status === "stopped") return { label: "Stopped", tone: "idle", rank: 9 };
   const next = firstUnsent(seq);
   if (!next) return { label: "All emails sent", tone: "idle", rank: 8 };
-  const slots = slotsIn(next);
+  const slots = slotsIn(next, facts);
   if (seq.status === "held" || slots.length) {
     return {
       label: `Needs input \u00b7 step ${next.position}`,
@@ -544,6 +625,7 @@ function NewSequenceForm({ onCreated }: { onCreated: (s: Sequence) => void }) {
 export default function SequencesView() {
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [templates, setTemplates] = useState<SequenceTemplateStep[]>([]);
+  const [facts, setFacts] = useState<SequenceFact[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [openCards, setOpenCards] = useState<Set<string>>(new Set());
@@ -576,6 +658,7 @@ export default function SequencesView() {
       if (!res.ok) throw new Error(j?.error ?? "load failed");
       setSequences(j.sequences);
       setTemplates(j.templates);
+      setFacts(j.facts ?? []);
       setLoadError(null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "load failed");
@@ -611,16 +694,22 @@ export default function SequencesView() {
     () => live.filter((s) => !RUNNING_STATUSES.includes(s.status)),
     [live],
   );
+  const factsByKey = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const f of facts) m[f.key] = f.value;
+    return m;
+  }, [facts]);
+
   const running = useMemo(
     () =>
       live
         .filter((s) => RUNNING_STATUSES.includes(s.status))
-        .map((s) => ({ seq: s, next: nextAction(s) }))
+        .map((s) => ({ seq: s, next: nextAction(s, factsByKey) }))
         .sort(
           (a, b) =>
             a.next.rank - b.next.rank || a.seq.name.localeCompare(b.seq.name),
         ),
-    [live],
+    [live, factsByKey],
   );
   const needsYou = useMemo(
     () => running.filter((r) => r.next.tone === "needs"),
@@ -841,14 +930,8 @@ export default function SequencesView() {
                 .sort((a, b) => a.position - b.position)[0];
               const nextPos = nextStep?.position;
               // the next email cannot go out while it still carries [slots]
-              const blockedSlots = nextStep
-                ? (
-                    (nextStep.position === 1
-                      ? `${nextStep.subject ?? ""}\n${nextStep.body}`
-                      : nextStep.body
-                    ).match(/\[[^\]]+\]/g) ?? []
-                  )
-                : [];
+              // or a {{token}} whose shared fact is empty
+              const blockedSlots = slotsIn(nextStep, factsByKey);
               return (
                 <article className={`card status-${seq.status}`} key={seq.id}>
                   <div className="card-head">
@@ -1151,6 +1234,8 @@ export default function SequencesView() {
             setOpen(s.id, true);
           }}
         />
+
+        <FactsPanel facts={facts} save={save} />
 
         <section className="zone">
           <h2>Drafts</h2>
