@@ -2232,3 +2232,108 @@ select.status.s-bounced {
 .sdesk .facts-hint code {
   color: var(--blue);
 }
+
+/* ---- Needs you: the first thing on the page ------------------------- */
+/* The strip answers "what do I do right now?" before any board is read.
+   Each row is one action with its owner-color: amber = fill something in,
+   orange = a QA flag on settled text, blue = approve a draft, green = a
+   human wrote back. */
+.sdesk .needs-you {
+  margin-bottom: 1.2rem;
+}
+.sdesk .ny-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+.sdesk .ny-head h2 {
+  margin: 0;
+}
+.sdesk .ny-count {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.sdesk .needs-you.all-clear .ny-count {
+  color: var(--good);
+}
+.sdesk .ny-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.sdesk .ny-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+.sdesk .ny-item:hover {
+  border-color: var(--blue);
+}
+.sdesk .ny-kind {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.sdesk .ny-kind.k-held {
+  color: var(--warn);
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+}
+.sdesk .ny-kind.k-qa {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+.sdesk .ny-kind.k-draft {
+  color: var(--blue);
+  border-color: var(--blue);
+  background: var(--blue-bg);
+}
+.sdesk .ny-kind.k-replied {
+  color: var(--good);
+  border-color: var(--good-border);
+  background: var(--good-ring);
+}
+.sdesk .ny-who {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--fg);
+}
+.sdesk .ny-what {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  /* one action per row, label above, nothing truncated into mystery */
+  .sdesk .ny-item {
+    flex-wrap: wrap;
+    row-gap: 0.15rem;
+    padding: 0.55rem 0.7rem;
+  }
+  .sdesk .ny-what {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+}

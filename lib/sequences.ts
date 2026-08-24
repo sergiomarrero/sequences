@@ -19,8 +19,14 @@ export interface SequenceStep {
   sequence_id: string;
   position: number;
   title: string;
-  subject: string | null;
-  body: string;
+  // Absent in the slim listing (GET /api/sequences?slim=1): text ships only
+  // when a card is opened, so 200 sequences do not mean 200 sequences of
+  // email bodies on every page load. `slots` is the server's read of what
+  // still blocks this step, computed with the current facts, so gating
+  // works without the text.
+  subject?: string | null;
+  body?: string;
+  slots?: string[];
   wait_days: number;
   sent_at: string | null;
   gmail_message_id: string | null;
@@ -354,7 +360,7 @@ async function nextUnsentStep(sequenceId: string) {
 // out the others.
 const EVENTS_PER_SEQUENCE = 60;
 
-export async function listSequences(): Promise<{
+export async function listSequences(opts?: { slim?: boolean }): Promise<{
   sequences: Sequence[];
   templates: SequenceTemplateStep[];
   facts: SequenceFact[];
@@ -379,8 +385,19 @@ export async function listSequences(): Promise<{
   for (const s of seqRes.data ?? []) {
     byId.set(s.id, { ...s, steps: [], events: [] });
   }
+  // Slim strips the text but keeps the verdict about it: the UI's chips,
+  // send gating, and the Needs-you strip all work from `slots` alone, and
+  // the full text arrives via GET /api/sequences/:id when a card opens.
+  const facts = opts?.slim ? await factsMap() : null;
   for (const st of stepRes.data ?? []) {
-    byId.get(st.sequence_id)?.steps.push(st);
+    if (facts) {
+      const { body: _b, subject: _sub, ...rest } = st;
+      byId
+        .get(st.sequence_id)
+        ?.steps.push({ ...rest, slots: unresolvedSlots(st, facts) });
+    } else {
+      byId.get(st.sequence_id)?.steps.push(st);
+    }
   }
 
   // The log is diagnostic, never load-bearing: if the events table is not
@@ -403,6 +420,29 @@ export async function listSequences(): Promise<{
     // empty until migration 0011 runs; the board treats that as "no facts"
     facts: await listFacts(),
   };
+}
+
+// One sequence, full text and its own event log. The detail fetch behind
+// the slim listing.
+export async function getSequence(id: string): Promise<Sequence | null> {
+  const sb = supabase();
+  const seqRes = await sb.from("crm_sequences").select("*").eq("id", id).single();
+  if (seqRes.error) return null;
+  const stepRes = await sb
+    .from("crm_sequence_steps")
+    .select("*")
+    .eq("sequence_id", id)
+    .order("position", { ascending: true });
+  if (stepRes.error) throw new Error(stepRes.error.message);
+  const out: Sequence = { ...seqRes.data, steps: stepRes.data ?? [], events: [] };
+  const evRes = await sb
+    .from("crm_sequence_events")
+    .select("*")
+    .eq("sequence_id", id)
+    .order("at", { ascending: false })
+    .limit(EVENTS_PER_SEQUENCE);
+  if (!evRes.error) out.events = evRes.data ?? [];
+  return out;
 }
 
 // Create a new pending sequence from the current template.

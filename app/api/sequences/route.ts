@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    return NextResponse.json(await listSequences());
+    const slim = req.nextUrl.searchParams.get("slim") === "1";
+    return NextResponse.json(await listSequences({ slim }));
   } catch (e) {
     // a refused action is the caller's problem, not a server fault
     const status = e instanceof SequenceError ? e.status : 500;
