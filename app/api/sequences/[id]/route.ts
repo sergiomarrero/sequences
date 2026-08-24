@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import {
   SequenceError,
   applySequenceAction,
+  getSequence,
   logEvent,
   sequenceHasStarted,
   SEQUENCE_EDITABLE_FIELDS,
@@ -20,6 +21,33 @@ const UUID_RE =
 // or    { name?, firm?, background? } for inline edits (user or sync).
 // The sync caller (Claude's mailman) may additionally write the run-state
 // fields: status, next_step, gmail_thread_id, hold_reason, send_now, is_test.
+// Full detail for one sequence: text, subjects, events. The slim listing
+// omits these; a card fetches them here when it opens.
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const caller = await sequencesCaller(req);
+  if (!caller) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const { id } = await params;
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ error: "bad id" }, { status: 400 });
+  }
+  try {
+    const seq = await getSequence(id);
+    if (!seq) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json(seq);
+  } catch (e) {
+    const status = e instanceof SequenceError ? e.status : 500;
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "load failed" },
+      { status },
+    );
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

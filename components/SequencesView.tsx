@@ -204,6 +204,10 @@ function slotsIn(
   facts: Record<string, string> = {},
 ): string[] {
   if (!step) return [];
+  // Slim listing: no text on board, but the server already judged it and
+  // shipped the verdict as step.slots. Text present (card open, or an edit
+  // in flight) wins, so gating tracks keystrokes.
+  if (step.body === undefined) return step.slots ?? [];
   const text =
     step.position === 1 ? `${step.subject ?? ""}\n${step.body}` : step.body;
   // [bracketed] text is a per-sequence slot; a {{token}} whose shared fact is
@@ -284,6 +288,30 @@ function nextAction(
     tone: "wait",
     rank: 3 + Math.min(left, 99) / 100,
   };
+}
+
+// QA flags the daily sweep has raised that Sergio has not yet dealt with.
+// A flag lives in the event log (action "qa_flag", stepPosition set) and
+// dies naturally: a later edit of that step, the step going out, or the
+// sweep itself withdrawing it (qa_ok). Events arrive newest first.
+function openQaFlags(
+  seq: Sequence,
+): { pos: number; detail: string; at: string }[] {
+  const flags: { pos: number; detail: string; at: string }[] = [];
+  const cleared = new Set<number>();
+  for (const ev of seq.events ?? []) {
+    const pos = ev.step_position;
+    if (pos == null) continue;
+    if (ev.action === "edited" || ev.action === "sent" || ev.action === "qa_ok") {
+      cleared.add(pos);
+    } else if (ev.action === "qa_flag" && !cleared.has(pos)) {
+      const step = seq.steps.find((s) => s.position === pos);
+      if (step && !step.sent_at && !flags.some((f) => f.pos === pos)) {
+        flags.push({ pos, detail: ev.detail ?? "QA flag", at: ev.at });
+      }
+    }
+  }
+  return flags.sort((a, b) => a.pos - b.pos);
 }
 
 // Sequences that are sending or paused mid-flight. These are the ones that
@@ -406,7 +434,7 @@ function StepEditor({
 }) {
   const [title, setTitle] = useState(step.title);
   const [subject, setSubject] = useState(step.subject ?? "");
-  const [body, setBody] = useState(step.body);
+  const [body, setBody] = useState(step.body ?? "");
   const [wait, setWait] = useState(step.wait_days);
   // removing an email is destructive and the control is small, so it takes
   // two taps: the same pattern as the send button
@@ -416,7 +444,7 @@ function StepEditor({
   useEffect(() => {
     setTitle(step.title);
     setSubject(step.subject ?? "");
-    setBody(step.body);
+    setBody(step.body ?? "");
     setWait(step.wait_days);
   }, [step.id, step.title, step.subject, step.body, step.wait_days]);
 
@@ -653,10 +681,26 @@ export default function SequencesView() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/sequences");
+      // Slim: 200 sequences of metadata, not 200 sequences of email bodies.
+      // Text arrives per card via hydrate() when one is opened.
+      const res = await fetch("/api/sequences?slim=1");
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error ?? "load failed");
-      setSequences(j.sequences);
+      setSequences((prev) => {
+        const oldSteps = new Map<string, SequenceStep>();
+        for (const s of prev) for (const st of s.steps) oldSteps.set(st.id, st);
+        // keep text a hydrate or an open editor already holds; a slim row
+        // must never blank a textarea mid-edit
+        return (j.sequences as Sequence[]).map((s) => ({
+          ...s,
+          steps: s.steps.map((st) => {
+            const had = oldSteps.get(st.id);
+            return had && had.body !== undefined && st.body === undefined
+              ? { ...st, body: had.body, subject: had.subject }
+              : st;
+          }),
+        }));
+      });
       setTemplates(j.templates);
       setFacts(j.facts ?? []);
       setLoadError(null);
@@ -664,6 +708,36 @@ export default function SequencesView() {
       setLoadError(e instanceof Error ? e.message : "load failed");
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  // Fetch one sequence's full text and events the moment its card opens.
+  const hydrating = useRef<Set<string>>(new Set());
+  const hydrate = useCallback(async (id: string) => {
+    if (hydrating.current.has(id)) return;
+    hydrating.current.add(id);
+    try {
+      const res = await fetch(`/api/sequences/${id}`);
+      if (!res.ok) return;
+      const full: Sequence = await res.json();
+      setSequences((prev) =>
+        prev.map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                ...full,
+                // an editor may hold newer keystrokes than the server copy;
+                // never regress text that is already on screen
+                steps: full.steps.map((st) => {
+                  const cur = s.steps.find((x) => x.id === st.id);
+                  return cur && cur.body !== undefined ? cur : st;
+                }),
+              }
+            : s,
+        ),
+      );
+    } finally {
+      hydrating.current.delete(id);
     }
   }, []);
 
@@ -750,6 +824,92 @@ export default function SequencesView() {
         .includes(q);
     });
   }, [closed, archQuery, archStatus]);
+
+  // Everything waiting on Sergio, in the order it deserves attention. This
+  // is the first thing on the page: at 200 sequences the board is a lot of
+  // rows, and the strip is the answer to "what do I actually do right now?".
+  type Todo = {
+    seq: Sequence;
+    kind: "held" | "qa" | "draft" | "replied";
+    label: string;
+  };
+  const todos = useMemo<Todo[]>(() => {
+    const out: Todo[] = [];
+    for (const s of ordered) {
+      if (CLOSED_STATUSES.includes(s.status) && s.status !== "replied") continue;
+      if (s.status === "held" || (RUNNING_STATUSES.includes(s.status) && slotsIn(firstUnsent(s), factsByKey).length)) {
+        const next = firstUnsent(s);
+        out.push({
+          seq: s,
+          kind: "held",
+          label:
+            s.hold_reason ??
+            (next
+              ? `step ${next.position} still needs ${slotsIn(next, factsByKey).length} blank${slotsIn(next, factsByKey).length === 1 ? "" : "s"} filled`
+              : "needs input"),
+        });
+      }
+    }
+    for (const s of ordered) {
+      if (CLOSED_STATUSES.includes(s.status)) continue;
+      const flags = openQaFlags(s);
+      if (flags.length) {
+        out.push({
+          seq: s,
+          kind: "qa",
+          label: flags
+            .map((f) =>
+              // the sweep sometimes writes "step N:" into the detail too;
+              // don't say it twice
+              /^step\s*\d+\s*:/i.test(f.detail)
+                ? f.detail
+                : `step ${f.pos}: ${f.detail}`,
+            )
+            .join(" \u00b7 "),
+        });
+      }
+    }
+    for (const s of ordered) {
+      if (s.status === "pending") {
+        out.push({ seq: s, kind: "draft", label: "new draft, read and approve" });
+      }
+    }
+    for (const s of ordered) {
+      if (s.status === "replied") {
+        out.push({
+          seq: s,
+          kind: "replied",
+          label: "wrote back; read the thread, then archive or resume",
+        });
+      }
+    }
+    return out;
+  }, [ordered, factsByKey]);
+
+  // Land on the thing itself: open its section, expand its card, scroll.
+  function jumpTo(seq: Sequence) {
+    hydrate(seq.id);
+    if (CLOSED_STATUSES.includes(seq.status)) {
+      setArchOpen(true);
+      setArchStatus("all");
+      setArchQuery("");
+      setArchExpanded((prev) => new Set(prev).add(seq.id));
+    } else if (RUNNING_STATUSES.includes(seq.status)) {
+      setRunFilter("all");
+      setRunQuery("");
+      if (!runCards) {
+        setRunExpanded((prev) => new Set(prev).add(seq.id));
+      }
+      setOpen(seq.id, true);
+    } else {
+      setOpen(seq.id, true);
+    }
+    setTimeout(() => {
+      document
+        .getElementById(`seq-${seq.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }
 
   async function act(id: string, action: string) {
     try {
@@ -911,6 +1071,7 @@ export default function SequencesView() {
   }
 
   function setOpen(id: string, isOpen: boolean) {
+    if (isOpen) hydrate(id);
     setOpenCards((prev) => {
       const next = new Set(prev);
       if (isOpen) next.add(id);
@@ -933,7 +1094,11 @@ export default function SequencesView() {
               // or a {{token}} whose shared fact is empty
               const blockedSlots = slotsIn(nextStep, factsByKey);
               return (
-                <article className={`card status-${seq.status}`} key={seq.id}>
+                <article
+                  className={`card status-${seq.status}`}
+                  id={`seq-${seq.id}`}
+                  key={seq.id}
+                >
                   <div className="card-head">
                     <h3>
                       {seq.name}
@@ -1046,7 +1211,12 @@ export default function SequencesView() {
                       <span className="chip">intro + {followups} follow-ups</span>
                     </summary>
 
-                    {seq.steps.map((st) => (
+                    {seq.steps.some((st) => st.body === undefined) && (
+                      <p className="edit-hint">Loading the emails\u2026</p>
+                    )}
+                    {seq.steps
+                      .filter((st) => st.body !== undefined)
+                      .map((st) => (
                       <StepEditor
                         key={st.id}
                         step={st}
@@ -1206,6 +1376,49 @@ export default function SequencesView() {
           card is its live state.
         </p>
 
+        {todos.length > 0 && (
+          <section className="zone needs-you" aria-label="What needs you">
+            <div className="ny-head">
+              <h2>Needs you</h2>
+              <span className="ny-count">
+                {todos.length} item{todos.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <ul className="ny-list">
+              {todos.map((t) => (
+                <li key={`${t.kind}-${t.seq.id}`}>
+                  <button
+                    type="button"
+                    className={`ny-item k-${t.kind}`}
+                    onClick={() => jumpTo(t.seq)}
+                  >
+                    <span className={`ny-kind k-${t.kind}`}>
+                      {t.kind === "held"
+                        ? "Fill in"
+                        : t.kind === "qa"
+                          ? "QA flag"
+                          : t.kind === "draft"
+                            ? "Approve"
+                            : "Replied"}
+                    </span>
+                    <span className="ny-who">{t.seq.name}</span>
+                    <span className="ny-what">{t.label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {!loading && !loadError && todos.length === 0 && (
+          <section className="zone needs-you all-clear">
+            <div className="ny-head">
+              <h2>Needs you</h2>
+              <span className="ny-count">nothing \u2014 all clear</span>
+            </div>
+          </section>
+        )}
+
         <div className="howto">
           <p>
             <strong>Add someone:</strong> paste their name, email, and
@@ -1250,13 +1463,14 @@ export default function SequencesView() {
               </span>
               <button
                 className="quiet"
-                onClick={() =>
+                onClick={() => {
+                  if (!openCards.size) drafts.forEach((s) => hydrate(s.id));
                   setOpenCards(
                     openCards.size
                       ? new Set()
                       : new Set(drafts.map((s) => s.id)),
-                  )
-                }
+                  );
+                }}
               >
                 {openCards.size ? "Collapse all" : "Expand all"}
               </button>
@@ -1368,14 +1582,15 @@ export default function SequencesView() {
                         <Fragment key={seq.id}>
                           <tr
                             className={`${isOpen ? "open" : ""} tone-${next.tone}`}
-                            onClick={() =>
+                            onClick={() => {
+                              if (!runExpanded.has(seq.id)) hydrate(seq.id);
                               setRunExpanded((prev) => {
                                 const nx = new Set(prev);
                                 if (nx.has(seq.id)) nx.delete(seq.id);
                                 else nx.add(seq.id);
                                 return nx;
-                              })
-                            }
+                              });
+                            }}
                           >
                             <td data-label="Name">
                               <span className="caret">
@@ -1518,14 +1733,15 @@ export default function SequencesView() {
                           <Fragment key={seq.id}>
                             <tr
                               className={isOpen ? "open" : ""}
-                              onClick={() =>
+                              onClick={() => {
+                                if (!archExpanded.has(seq.id)) hydrate(seq.id);
                                 setArchExpanded((prev) => {
                                   const next = new Set(prev);
                                   if (next.has(seq.id)) next.delete(seq.id);
                                   else next.add(seq.id);
                                   return next;
-                                })
-                              }
+                                });
+                              }}
                             >
                               <td data-label="Name">
                                 <span className="caret">
