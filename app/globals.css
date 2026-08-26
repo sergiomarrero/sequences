@@ -98,11 +98,22 @@ select:focus {
   border-color: var(--blue) !important;
 }
 
+/* Inputs inherit the type but must never inherit only half a colour pair.
+   Setting `color` without `background` leaves the browser's white default
+   showing through under near-white theme text, which renders the field
+   invisible as you type. Anything that genuinely wants to disappear into
+   the page says `background: transparent` for itself. */
 input,
 select,
 textarea {
   font: inherit;
-  color: inherit;
+  color: var(--txt);
+  background: var(--bg);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.75;
 }
 
 /* ---------- chrome ---------- */
@@ -2223,11 +2234,27 @@ select.status.s-bounced {
   border-radius: 0.3rem;
   white-space: nowrap;
 }
+/* A real field, not in-place letter editing: it wants a visible boundary
+   so an empty fact reads as something waiting to be filled. */
 .sdesk .fact textarea {
   width: 100%;
   resize: vertical;
   min-height: 2.6rem;
   font-size: 16px; /* iOS: sub-16px inputs zoom the page on focus */
+  color: var(--txt);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  line-height: 1.5;
+}
+.sdesk .fact textarea:hover {
+  border-color: var(--muted);
+}
+/* an unfilled fact holds every email that needs it, so say so in the
+   colour the board already uses for "waiting on you" */
+.sdesk .fact textarea:placeholder-shown {
+  border-color: var(--warn-border);
 }
 .sdesk .facts-hint code {
   color: var(--blue);
