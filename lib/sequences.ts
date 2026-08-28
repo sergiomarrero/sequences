@@ -27,6 +27,9 @@ export interface SequenceStep {
   subject?: string | null;
   body?: string;
   slots?: string[];
+  // review checkpoint: the run stops here and waits for Sergio to read and
+  // untick before this step can send. Meaningless once sent.
+  review_gate: boolean;
   wait_days: number;
   sent_at: string | null;
   gmail_message_id: string | null;
@@ -263,11 +266,17 @@ export function resolveFacts(
   });
 }
 
+// The marker a review checkpoint contributes to a step's blocker list. It
+// rides the same rail as [slots] and empty {{facts}}, so every gate that
+// refuses to send an unfilled slot refuses a checkpointed step for free.
+export const CHECKPOINT_MARKER = "[review checkpoint]";
+
 export function unresolvedSlots(
   step: {
     position: number;
     subject: string | null;
     body: string;
+    review_gate?: boolean;
   },
   facts: Record<string, string> = {},
 ): string[] {
@@ -280,11 +289,19 @@ export function unresolvedSlots(
     const v = facts[m[1].toLowerCase()];
     if (!v || !v.trim()) slots.push(m[0]);
   }
+  if (step.review_gate) slots.push(CHECKPOINT_MARKER);
   return slots;
 }
 
 export function holdReasonFor(position: number, slots: string[]): string {
-  return `Step ${position} needs input: ${slots.join("; ")}`.slice(0, 500);
+  const real = slots.filter((x) => x !== CHECKPOINT_MARKER);
+  if (!real.length && slots.length) {
+    // only the checkpoint blocks: the ask is to read, not to fill anything in
+    return `Step ${position} is checkpointed: review it, then untick the flag to continue.`;
+  }
+  return `Step ${position} needs input: ${real.join("; ")}${
+    real.length < slots.length ? " (and it is checkpointed for review)" : ""
+  }`.slice(0, 500);
 }
 
 // Editing a step can clear the very slots a sequence is held on. Re-read the
@@ -347,7 +364,7 @@ export async function refreshHoldState(sequenceId: string): Promise<void> {
 async function nextUnsentStep(sequenceId: string) {
   const res = await supabase()
     .from("crm_sequence_steps")
-    .select("position, subject, body")
+    .select("position, subject, body, review_gate")
     .eq("sequence_id", sequenceId)
     .is("sent_at", null)
     .order("position", { ascending: true })

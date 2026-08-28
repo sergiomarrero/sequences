@@ -104,6 +104,17 @@ export async function PATCH(
             : null;
       }
     }
+    // the review checkpoint is a boolean toggle, not text: handled apart
+    // from the string fields so the unwrap and emptiness rules never touch it
+    if ("review_gate" in body) {
+      if (typeof body.review_gate !== "boolean") {
+        return NextResponse.json(
+          { error: "review_gate must be true or false" },
+          { status: 400 },
+        );
+      }
+      update.review_gate = body.review_gate;
+    }
     if (!Object.keys(update).length) {
       return NextResponse.json({ error: "nothing to update" }, { status: 400 });
     }
@@ -120,6 +131,18 @@ export async function PATCH(
         actor: "sync",
         action: "sent",
         detail: `step ${res.data.position} "${res.data.title}" sent as Gmail message ${update.gmail_message_id ?? "(id not recorded)"}`,
+        stepPosition: res.data.position,
+      });
+    } else if (
+      Object.keys(update).length === 1 &&
+      "review_gate" in update
+    ) {
+      await logEvent(id, {
+        actor: caller === "sync" ? "sync" : "user",
+        action: update.review_gate ? "checkpoint set" : "checkpoint cleared",
+        detail: update.review_gate
+          ? `step ${res.data.position} "${res.data.title}": the sequence will stop here and wait for review`
+          : `step ${res.data.position} "${res.data.title}": checkpoint removed, the step can send when due`,
         stepPosition: res.data.position,
       });
     } else {
