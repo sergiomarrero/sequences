@@ -2504,3 +2504,35 @@ select.status.s-bounced {
     margin: 0.4rem 0 0;
   }
 }
+
+/* Template tabs: one row of pills, the shown template highlighted. The
+   star on a pill marks the default the New sequence form preselects. */
+.sdesk .tpl-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.sdesk .tpl-tab {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--txt);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.sdesk .tpl-tab:hover {
+  border-color: var(--accent-soft);
+}
+.sdesk .tpl-tab.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.sdesk .tpl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 10px;
+}

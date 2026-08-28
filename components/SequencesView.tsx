@@ -9,7 +9,7 @@ import type {
   SequenceFact,
   SequenceStatus,
   SequenceStep,
-  SequenceTemplateStep,
+  SequenceTemplate,
 } from "@/lib/sequences";
 
 function fmtStamp(v: string): string {
@@ -623,12 +623,22 @@ function StepEditor({
   );
 }
 
-function NewSequenceForm({ onCreated }: { onCreated: (s: Sequence) => void }) {
+function NewSequenceForm({
+  onCreated,
+  templates,
+}: {
+  onCreated: (s: Sequence) => void;
+  templates: SequenceTemplate[];
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [firm, setFirm] = useState("");
   const [background, setBackground] = useState("");
+  // "" means "whatever the default template is right now"
+  const [tplId, setTplId] = useState("");
+  const defaultTplId =
+    templates.find((t) => t.is_default)?.id ?? templates[0]?.id ?? "";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -650,6 +660,20 @@ function NewSequenceForm({ onCreated }: { onCreated: (s: Sequence) => void }) {
         <input placeholder="Name *" value={name} onChange={(e) => setName(e.target.value)} />
         <input placeholder="Email *" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input placeholder="Firm" value={firm} onChange={(e) => setFirm(e.target.value)} />
+        {templates.length > 1 && (
+          <select
+            aria-label="Template to draft from"
+            value={tplId || defaultTplId}
+            onChange={(e) => setTplId(e.target.value)}
+          >
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.is_default ? " (default)" : ""} · {t.steps.length} emails
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <textarea
         placeholder="Background: how you met, their thesis, the ask…"
@@ -669,7 +693,13 @@ function NewSequenceForm({ onCreated }: { onCreated: (s: Sequence) => void }) {
               const res = await fetch("/api/sequences", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, email, firm, background }),
+                body: JSON.stringify({
+                  name,
+                  email,
+                  firm,
+                  background,
+                  template_id: tplId || defaultTplId || undefined,
+                }),
               });
               const j = await res.json();
               if (!res.ok) throw new Error(j?.error ?? "create failed");
@@ -693,7 +723,9 @@ function NewSequenceForm({ onCreated }: { onCreated: (s: Sequence) => void }) {
 
 export default function SequencesView() {
   const [sequences, setSequences] = useState<Sequence[]>([]);
-  const [templates, setTemplates] = useState<SequenceTemplateStep[]>([]);
+  const [templates, setTemplates] = useState<SequenceTemplate[]>([]);
+  // which template the Templates section is showing; null = the default
+  const [tplSel, setTplSel] = useState<string | null>(null);
   const [facts, setFacts] = useState<SequenceFact[]>([]);
   const [noSendDays, setNoSendDays] = useState<NoSendDay[]>([]);
   const [sendStats, setSendStats] = useState<SendStats | null>(null);
@@ -1038,23 +1070,112 @@ export default function SequencesView() {
     load();
   }
 
-  // ☆ star: copy this step's current text over the default template for
-  // the same position, so future drafts start from it.
+  // ☆ star: copy this step's current text over its template's step at
+  // the same position, so future drafts start from it. The target is the
+  // template the sequence was drafted from; older sequences with no
+  // template_id promote into the default.
   function promote(
     step: SequenceStep,
     v: { title: string; subject: string | null; body: string },
   ) {
-    const tpl = templates.find((t) => t.position === step.position);
-    if (!tpl) return;
+    const seq = sequences.find((x) => x.id === step.sequence_id);
+    const group =
+      templates.find((t) => t.id === (seq?.template_id ?? "")) ??
+      templates.find((t) => t.is_default) ??
+      templates[0];
+    const tpl = group?.steps.find((t) => t.position === step.position);
+    if (!group || !tpl) return;
     save(`promote:${tpl.id}`, `/api/sequences/templates/${tpl.id}`, {
       title: v.title,
       subject: v.subject,
       body: v.body,
     });
     setTemplates((prev) =>
-      prev.map((t) => (t.id === tpl.id ? { ...t, ...v } : t)),
+      prev.map((g) =>
+        g.id !== group.id
+          ? g
+          : {
+              ...g,
+              steps: g.steps.map((t) => (t.id === tpl.id ? { ...t, ...v } : t)),
+            },
+      ),
     );
     setPromoted((prev) => new Set(prev).add(step.id));
+  }
+
+  // The template the Templates section is showing. Falls back to the
+  // default, then to whatever exists, so the section never goes blank.
+  const selTpl =
+    templates.find((t) => t.id === tplSel) ??
+    templates.find((t) => t.is_default) ??
+    templates[0] ??
+    null;
+
+  async function tplReq(
+    method: string,
+    url: string,
+    body?: unknown,
+  ): Promise<Record<string, unknown> | null> {
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok) {
+      window.alert(j?.error ?? "request failed");
+      return null;
+    }
+    return j;
+  }
+
+  async function newTemplate() {
+    if (!selTpl?.id) return;
+    const name = window.prompt(
+      `Name the new template (it starts as a copy of "${selTpl.name}"):`,
+    );
+    if (!name?.trim()) return;
+    const j = await tplReq("POST", "/api/sequences/templates", {
+      name: name.trim(),
+      copy_from_template_id: selTpl.id,
+    });
+    if (j?.id) {
+      setTplSel(String(j.id));
+      load();
+    }
+  }
+
+  async function renameTemplate() {
+    if (!selTpl?.id) return;
+    const name = window.prompt("Template name:", selTpl.name);
+    if (!name?.trim() || name.trim() === selTpl.name) return;
+    const j = await tplReq("PATCH", `/api/sequences/template/${selTpl.id}`, {
+      name: name.trim(),
+    });
+    if (j) load();
+  }
+
+  async function makeDefaultTemplate() {
+    if (!selTpl?.id) return;
+    const j = await tplReq("PATCH", `/api/sequences/template/${selTpl.id}`, {
+      is_default: true,
+    });
+    if (j) load();
+  }
+
+  async function deleteTemplate() {
+    if (!selTpl?.id) return;
+    if (
+      !window.confirm(
+        `Delete the "${selTpl.name}" template? Sequences already drafted from it keep their emails.`,
+      )
+    )
+      return;
+    const j = await tplReq("DELETE", `/api/sequences/template/${selTpl.id}`);
+    if (j) {
+      setTplSel(null);
+      load();
+    }
   }
 
   // "Send next email now" arms on the first tap and fires on the second,
@@ -1541,6 +1662,7 @@ export default function SequencesView() {
         )}
 
         <NewSequenceForm
+          templates={templates}
           onCreated={(s) => {
             setSequences((prev) => [s, ...prev]);
             setOpen(s.id, true);
@@ -1884,28 +2006,68 @@ export default function SequencesView() {
         </section>
 
         <section className="zone">
-          <h2>Default template</h2>
+          <h2>Templates</h2>
           <div className="list">
             <article className="card">
+              {templates.length > 1 && (
+                <div className="tpl-tabs">
+                  {templates.map((t) => (
+                    <button
+                      key={t.id}
+                      className={"tpl-tab" + (t.id === selTpl?.id ? " on" : "")}
+                      onClick={() => setTplSel(t.id)}
+                    >
+                      {t.name}
+                      {t.is_default ? " \u2605" : ""}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="card-head">
-                <h3>The 8-email default</h3>
+                <h3>{selTpl?.name ?? "Template"}</h3>
                 <span className="chip status st-template">Template</span>
+                {selTpl?.is_default && (
+                  <span className="chip">default for new sequences</span>
+                )}
               </div>
               <p className="metaline">
-                Every new sequence is drafted from this. Email 1 is the
-                introduction: it starts the thread and sends on approval;
-                emails 2-8 follow up on that thread. Edit anything here and
-                it becomes the default for future drafts.
+                Every new sequence starts as a copy of a template; the New
+                sequence form picks which. Edits here shape future drafts
+                only: existing sequences keep their own copies.
               </p>
-              <div className="bg-block">
-                <span className="lbl">Why this arc</span>
-                Built from current reply-rate research: every follow-up adds
-                something new; why-you personalization comes early, where it
-                lifts replies most; every email has one ask and invites a
-                one-word answer; spacing widens through the sequence (2, 3,
-                3, 4, 4, 5, 6 business days) since early follow-ups drive
-                most replies and late fast ones read as spam.
-              </div>
+              {selTpl?.description && (
+                <div className="bg-block">
+                  <span className="lbl">About this template</span>
+                  {selTpl.description}
+                </div>
+              )}
+
+              {selTpl?.id ? (
+                <div className="tpl-actions">
+                  <button className="quiet" onClick={newTemplate}>
+                    New template (copy of this)
+                  </button>
+                  <button className="quiet" onClick={renameTemplate}>
+                    Rename
+                  </button>
+                  {!selTpl.is_default && (
+                    <button className="quiet" onClick={makeDefaultTemplate}>
+                      Make default
+                    </button>
+                  )}
+                  {!selTpl.is_default && (
+                    <button className="quiet" onClick={deleteTemplate}>
+                      Delete
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="edit-hint">
+                  Named templates arrive with migration 0015: run
+                  db/migrations/0015_crm_multi_templates.sql in Supabase to
+                  add and manage more templates.
+                </p>
+              )}
 
               <details
                 className="seq"
@@ -1915,10 +2077,12 @@ export default function SequencesView() {
                 }
               >
                 <summary>
-                  <span>Edit the template</span>
-                  <span className="chip">intro + 7 follow-ups · editable</span>
+                  <span>Edit the emails</span>
+                  <span className="chip">
+                    {selTpl?.steps.length ?? 0} emails · editable
+                  </span>
                 </summary>
-                {templates.map((t) => (
+                {(selTpl?.steps ?? []).map((t) => (
                   <StepEditor
                     key={t.id}
                     step={{
