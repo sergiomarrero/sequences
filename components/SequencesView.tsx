@@ -2,6 +2,8 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  NoSendDay,
+  SendStats,
   Sequence,
   SequenceEvent,
   SequenceFact,
@@ -693,6 +695,26 @@ export default function SequencesView() {
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [templates, setTemplates] = useState<SequenceTemplateStep[]>([]);
   const [facts, setFacts] = useState<SequenceFact[]>([]);
+  const [noSendDays, setNoSendDays] = useState<NoSendDay[]>([]);
+  const [sendStats, setSendStats] = useState<SendStats | null>(null);
+  // the intro text is for new eyes; regulars keep it folded. Remembered
+  // per browser, and reading it is one tap away either way.
+  const [introOpen, setIntroOpen] = useState(false);
+  useEffect(() => {
+    try {
+      setIntroOpen(localStorage.getItem("sdesk-intro") === "open");
+    } catch {}
+  }, []);
+  const toggleIntro = () => {
+    setIntroOpen((v) => {
+      try {
+        localStorage.setItem("sdesk-intro", v ? "closed" : "open");
+      } catch {}
+      return !v;
+    });
+  };
+  const [nsDay, setNsDay] = useState("");
+  const [nsLabel, setNsLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [openCards, setOpenCards] = useState<Set<string>>(new Set());
@@ -742,6 +764,8 @@ export default function SequencesView() {
       });
       setTemplates(j.templates);
       setFacts(j.facts ?? []);
+      setNoSendDays(j.no_send_days ?? []);
+      setSendStats(j.send_stats ?? null);
       setLoadError(null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "load failed");
@@ -1430,12 +1454,24 @@ export default function SequencesView() {
       </header>
 
       <div className="wrap">
-        <h1>Sequence Desk</h1>
+        <h1>
+          Sequence Desk
+          <button
+            type="button"
+            className="intro-toggle"
+            onClick={toggleIntro}
+            aria-expanded={introOpen}
+          >
+            {introOpen ? "Hide the guide \u25b4" : "How this works \u25be"}
+          </button>
+        </h1>
+        {introOpen && (
         <p className="tagline">
           Investor sequences: review drafts, approve or archive, and track
           who is where. Cards sort themselves by status; the chip on each
           card is its live state.
         </p>
+        )}
 
         {todos.length > 0 && (
           <section className="zone needs-you" aria-label="What needs you">
@@ -1480,6 +1516,7 @@ export default function SequencesView() {
           </section>
         )}
 
+        {introOpen && (
         <div className="howto">
           <p>
             <strong>Add someone:</strong> paste their name, email, and
@@ -1501,6 +1538,7 @@ export default function SequencesView() {
             immediately with Send next email now.
           </p>
         </div>
+        )}
 
         <NewSequenceForm
           onCreated={(s) => {
@@ -1906,6 +1944,135 @@ export default function SequencesView() {
               </details>
             </article>
           </div>
+        </section>
+
+        <section className="zone activity-zone">
+          <h2>Send activity</h2>
+
+          {sendStats ? (
+            <>
+              <div className="cap-meter">
+                <div className="cap-line">
+                  <span className="cap-count">
+                    {sendStats.sent_today.toLocaleString()}
+                  </span>
+                  <span className="cap-of">
+                    of {sendStats.daily_cap.toLocaleString()} sent today
+                  </span>
+                  {sendStats.no_send_today && (
+                    <span className="no-send-badge">
+                      No-send day: {sendStats.no_send_today}. Scheduled
+                      sends pause; Send now still works.
+                    </span>
+                  )}
+                </div>
+                <div className="cap-bar">
+                  <div
+                    className="cap-fill"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (sendStats.sent_today / sendStats.daily_cap) * 100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="activity-cols">
+                <div>
+                  <h3 className="mini-h">Sent per day</h3>
+                  {sendStats.by_day.length === 0 ? (
+                    <p className="edit-hint">No sends in the last 14 days.</p>
+                  ) : (
+                    <table className="mini-table">
+                      <tbody>
+                        {sendStats.by_day.map((d) => (
+                          <tr key={d.day}>
+                            <td>{d.day}</td>
+                            <td className="num">{d.sent}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="mini-h">No-send days</h3>
+                  <p className="edit-hint">
+                    The scheduled run never sends on weekends or on these
+                    dates, and they do not count toward wait times. Send
+                    now and direct asks are exempt.
+                  </p>
+                  <table className="mini-table">
+                    <tbody>
+                      {noSendDays.map((d) => (
+                        <tr key={d.day}>
+                          <td>{d.day}</td>
+                          <td>{d.label}</td>
+                          <td className="num">
+                            <button
+                              className="quiet"
+                              aria-label={`Remove no-send day ${d.day}`}
+                              onClick={async () => {
+                                await fetch("/api/sequences/no-send-days", {
+                                  method: "DELETE",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({ day: d.day }),
+                                });
+                                load();
+                              }}
+                            >
+                              {"\u00d7"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="ns-add">
+                    <input
+                      type="date"
+                      aria-label="New no-send date"
+                      value={nsDay}
+                      onChange={(e) => setNsDay(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Label (e.g. Office closed)"
+                      aria-label="Label for the no-send date"
+                      value={nsLabel}
+                      onChange={(e) => setNsLabel(e.target.value)}
+                    />
+                    <button
+                      className="quiet"
+                      disabled={!nsDay}
+                      onClick={async () => {
+                        await fetch("/api/sequences/no-send-days", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ day: nsDay, label: nsLabel }),
+                        });
+                        setNsDay("");
+                        setNsLabel("");
+                        load();
+                      }}
+                    >
+                      Add day
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="edit-hint">
+              Counter not available yet: run db/migrations/0014_crm_no_send_days.sql
+              in Supabase and reload.
+            </p>
+          )}
         </section>
 
         <footer>

@@ -2400,3 +2400,107 @@ select.status.s-bounced {
     white-space: normal;
   }
 }
+
+/* ---- Send activity: the counter, the history, the calendar ---------- */
+/* The counter answers "how close to the ceiling are we today?" at a
+   glance; the bar stays quiet green until volume actually approaches the
+   cap. A no-send day announces itself instead of leaving the reader to
+   wonder why nothing went out. */
+.sdesk .intro-toggle {
+  margin-left: 0.8rem;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  vertical-align: middle;
+}
+.sdesk .intro-toggle:hover {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+.sdesk .cap-meter {
+  margin: 0.4rem 0 1rem;
+}
+.sdesk .cap-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+.sdesk .cap-count {
+  font-size: 1.5rem;
+  font-weight: 650;
+  color: var(--fg);
+}
+.sdesk .cap-of {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.sdesk .no-send-badge {
+  font-size: 0.78rem;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 0.4rem;
+  padding: 0.15rem 0.55rem;
+}
+.sdesk .cap-bar {
+  height: 6px;
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+  max-width: 34rem;
+}
+.sdesk .cap-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--good);
+}
+.sdesk .activity-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1.2rem;
+}
+.sdesk .mini-h {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--fg);
+}
+.sdesk .mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+.sdesk .mini-table td {
+  padding: 0.25rem 0.5rem 0.25rem 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--txt);
+}
+.sdesk .mini-table td.num {
+  text-align: right;
+  color: var(--muted);
+}
+.sdesk .ns-add {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+.sdesk .ns-add input[type="date"] {
+  flex: 0 0 auto;
+}
+.sdesk .ns-add input[type="text"] {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+@media (max-width: 720px) {
+  .sdesk .intro-toggle {
+    display: block;
+    margin: 0.4rem 0 0;
+  }
+}
