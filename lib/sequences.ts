@@ -377,10 +377,83 @@ async function nextUnsentStep(sequenceId: string) {
 // out the others.
 const EVENTS_PER_SEQUENCE = 60;
 
+// ---- No-send days and the send counter --------------------------------
+
+export interface NoSendDay {
+  day: string; // YYYY-MM-DD
+  label: string;
+}
+
+export interface SendStats {
+  // ET calendar date the counts are bucketed by
+  today: string;
+  sent_today: number;
+  // the hard ceiling the run must never cross in one day
+  daily_cap: number;
+  // newest first, up to 14 days that actually had sends
+  by_day: { day: string; sent: number }[];
+  // set when today is a weekend or a listed no-send day
+  no_send_today: string | null;
+}
+
+export const DAILY_SEND_CAP = 1000;
+
+// Day boundaries follow Sergio's clock, not UTC: a send at 9pm ET belongs
+// to that evening, not to tomorrow.
+export function etDate(d: Date = new Date()): string {
+  return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+export async function listNoSendDays(): Promise<NoSendDay[]> {
+  const res = await supabase()
+    .from("crm_no_send_days")
+    .select("day, label")
+    .order("day", { ascending: true });
+  // table absent until migration 0014 runs; treat as an empty calendar
+  if (res.error) return [];
+  return res.data ?? [];
+}
+
+export async function sendStats(): Promise<SendStats> {
+  const since = new Date(Date.now() - 15 * 86400000).toISOString();
+  const res = await supabase()
+    .from("crm_sequence_steps")
+    .select("sent_at")
+    .not("sent_at", "is", null)
+    .gte("sent_at", since);
+  if (res.error) throw new Error(res.error.message);
+  const counts = new Map<string, number>();
+  for (const r of res.data ?? []) {
+    const day = etDate(new Date(r.sent_at as string));
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  const today = etDate();
+  const noSend = await listNoSendDays();
+  const holiday = noSend.find((d) => d.day === today);
+  const dow = new Date(`${today}T12:00:00`).getDay();
+  const weekend = dow === 0 || dow === 6;
+  return {
+    today,
+    sent_today: counts.get(today) ?? 0,
+    daily_cap: DAILY_SEND_CAP,
+    by_day: [...counts.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 14)
+      .map(([day, sent]) => ({ day, sent })),
+    no_send_today: holiday
+      ? holiday.label || "No-send day"
+      : weekend
+        ? "Weekend"
+        : null,
+  };
+}
+
 export async function listSequences(opts?: { slim?: boolean }): Promise<{
   sequences: Sequence[];
   templates: SequenceTemplateStep[];
   facts: SequenceFact[];
+  no_send_days: NoSendDay[];
+  send_stats: SendStats;
 }> {
   const sb = supabase();
   const [seqRes, stepRes, tplRes] = await Promise.all([
@@ -436,6 +509,8 @@ export async function listSequences(opts?: { slim?: boolean }): Promise<{
     templates: tplRes.data ?? [],
     // empty until migration 0011 runs; the board treats that as "no facts"
     facts: await listFacts(),
+    no_send_days: await listNoSendDays(),
+    send_stats: await sendStats(),
   };
 }
 
