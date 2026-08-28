@@ -1311,6 +1311,42 @@ select.status.s-bounced {
   color: var(--danger);
   border-color: var(--danger-border);
 }
+/* Review checkpoint: reversible, so one tap, no confirm. The flag turns
+   amber when set, and the gated step carries a banner saying exactly what
+   will and will not happen. */
+.sdesk .gate button {
+  padding: 0.15rem 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+}
+.sdesk .gate button:hover {
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+.sdesk .gate button.on {
+  color: var(--warn);
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+}
+.sdesk .step.gated {
+  border-left: 3px solid var(--warn);
+  padding-left: 0.8rem;
+  margin-left: -0.2rem;
+}
+.sdesk .gate-note {
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 0.4rem;
+}
+
 .sdesk .rm button.armed {
   color: var(--danger);
   border-color: var(--danger-border);

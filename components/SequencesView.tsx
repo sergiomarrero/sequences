@@ -198,6 +198,9 @@ function chipText(seq: Sequence): string {
 // The slots still blocking a step. Shared by the card and the running board
 // so both agree on what "needs input" means.
 const FACT_TOKEN = /\{\{\s*([a-z0-9_]+)\s*\}\}/gi;
+// mirrors CHECKPOINT_MARKER in lib/sequences.ts: the entry a flagged step
+// contributes to its own blocker list
+const CHECKPOINT_MARKER = "[review checkpoint]";
 
 function slotsIn(
   step: SequenceStep | undefined,
@@ -208,6 +211,7 @@ function slotsIn(
   // shipped the verdict as step.slots. Text present (card open, or an edit
   // in flight) wins, so gating tracks keystrokes.
   if (step.body === undefined) return step.slots ?? [];
+  const gate: string[] = step.review_gate ? [CHECKPOINT_MARKER] : [];
   const text =
     step.position === 1 ? `${step.subject ?? ""}\n${step.body}` : step.body;
   // [bracketed] text is a per-sequence slot; a {{token}} whose shared fact is
@@ -217,7 +221,7 @@ function slotsIn(
     const v = facts[m[1].toLowerCase()];
     if (!v || !v.trim()) slots.push(m[0]);
   }
-  return slots;
+  return slots.concat(gate);
 }
 
 function firstUnsent(seq: Sequence): SequenceStep | undefined {
@@ -265,8 +269,12 @@ function nextAction(
   if (!next) return { label: "All emails sent", tone: "idle", rank: 8 };
   const slots = slotsIn(next, facts);
   if (seq.status === "held" || slots.length) {
+    const onlyGate =
+      slots.length > 0 && slots.every((x) => x === CHECKPOINT_MARKER);
     return {
-      label: `Needs input \u00b7 step ${next.position}`,
+      label: onlyGate
+        ? `\u2691 Review \u00b7 step ${next.position}`
+        : `Needs input \u00b7 step ${next.position}`,
       tone: "needs",
       rank: 0,
     };
@@ -412,6 +420,7 @@ function StepEditor({
   canMove,
   onMove,
   onRemove,
+  onGate,
   save,
   onPromote,
   promoted,
@@ -424,6 +433,9 @@ function StepEditor({
   onMove: (dir: "up" | "down") => void;
   // absent when this step cannot be removed (sent, or the only one left)
   onRemove?: () => void;
+  // toggle the review checkpoint: the sequence will stop before this step
+  // and wait until the flag is cleared. Absent on sent steps.
+  onGate?: () => void;
   save: (key: string, url: string, patch: Record<string, unknown>) => void;
   onPromote?: (v: { title: string; subject: string | null; body: string }) => void;
   promoted?: boolean;
@@ -449,7 +461,13 @@ function StepEditor({
   }, [step.id, step.title, step.subject, step.body, step.wait_days]);
 
   return (
-    <div className={`step ${sent ? "sent" : ""}`}>
+    <div className={`step ${sent ? "sent" : ""} ${!sent && step.review_gate ? "gated" : ""}`}>
+      {!sent && step.review_gate && (
+        <div className="gate-note">
+          {"\u2691"} Checkpoint: the sequence stops here until you review this
+          email and untick the flag.
+        </div>
+      )}
       <div className="step-head">
         <h4>
           <span className="n">{step.position}</span>
@@ -488,6 +506,27 @@ function StepEditor({
           <span className="mv">
             <button onClick={() => onMove("up")} aria-label="Move earlier">↑</button>
             <button onClick={() => onMove("down")} aria-label="Move later">↓</button>
+          </span>
+        )}
+        {!sent && onGate && (
+          <span className="gate">
+            <button
+              type="button"
+              className={step.review_gate ? "on" : ""}
+              title={
+                step.review_gate
+                  ? "Checkpoint on: the sequence stops before this email until you untick"
+                  : "Set a checkpoint: the sequence will stop here and wait for your review"
+              }
+              aria-label={
+                step.review_gate
+                  ? `Remove the review checkpoint on step ${step.position}`
+                  : `Stop the sequence at step ${step.position} for review`
+              }
+              onClick={onGate}
+            >
+              {"\u2691"}
+            </button>
           </span>
         )}
         {!sent && onRemove && (
@@ -943,6 +982,23 @@ export default function SequencesView() {
     load();
   }
 
+  // One PATCH, then reload: the server recomputes the hold, so a checkpoint
+  // set on the very next step shows up as held immediately, and clearing the
+  // last blocker lifts it.
+  async function toggleGate(seq: Sequence, step: SequenceStep) {
+    const r = await fetch(`/api/sequences/${seq.id}/steps/${step.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ review_gate: !step.review_gate }),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      setActErr({ id: seq.id, msg: j?.error ?? "could not toggle the checkpoint" });
+      return;
+    }
+    load();
+  }
+
   async function removeStep(seq: Sequence, step: SequenceStep) {
     const r = await fetch(`/api/sequences/${seq.id}/steps/${step.id}`, {
       method: "DELETE",
@@ -1228,6 +1284,9 @@ export default function SequencesView() {
                             ? () => removeStep(seq, st)
                             : undefined
                         }
+                        onGate={
+                          !st.sent_at ? () => toggleGate(seq, st) : undefined
+                        }
                         save={save}
                         onPromote={(v) => promote(st, v)}
                         promoted={promoted.has(st.id)}
@@ -1243,7 +1302,7 @@ export default function SequencesView() {
                       Tap any email to edit it in place; edits save. A step
                       still carrying [slots] is skipped, never sent. The ☆
                       star marks an email as the new template default for
-                      that step; ↑↓ reorder unsent steps, and × removes one.
+                      that step; ↑↓ reorder unsent steps, × removes one, and ⚑ checkpoints one so the sequence stops there for your review.
                     </p>
 
                   </details>
@@ -1276,7 +1335,9 @@ export default function SequencesView() {
                         onClick={() => sendNow(seq)}
                       >
                         {blockedSlots.length
-                          ? `Fill in step ${nextPos} to send`
+                          ? blockedSlots.every((x) => x === CHECKPOINT_MARKER)
+                            ? `Step ${nextPos} is checkpointed: review, then untick \u2691`
+                            : `Fill in step ${nextPos} to send`
                           : queuing === seq.id
                             ? "Queuing\u2026"
                             : seq.send_now
@@ -1434,7 +1495,7 @@ export default function SequencesView() {
           </p>
           <p>
             <strong>Edits</strong> to email text, subjects, and wait days
-            save as you type. The ↑↓ arrows reorder unsent steps and × removes one; the ☆
+            save as you type. The ↑↓ arrows reorder unsent steps, × removes one, ⚑ sets a review checkpoint; the ☆
             star makes an email the new template default for that step.
             Decisions take effect at the next weekday morning run, or
             immediately with Send next email now.
@@ -1832,6 +1893,9 @@ export default function SequencesView() {
                       wait_days: t.wait_days,
                       sent_at: null,
                       gmail_message_id: null,
+                      // templates are drafts-of-drafts; a checkpoint on one
+                      // would mean nothing
+                      review_gate: false,
                     }}
                     url={`/api/sequences/templates/${t.id}`}
                     canMove={false}
