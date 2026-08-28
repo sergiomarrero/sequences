@@ -45,6 +45,10 @@ export async function POST(req: NextRequest) {
       email: body.email,
       firm: typeof body.firm === "string" ? body.firm : null,
       background: typeof body.background === "string" ? body.background : null,
+      template_id:
+        typeof body.template_id === "string" && body.template_id
+          ? body.template_id
+          : null,
     });
     return NextResponse.json(seq, { status: 201 });
   } catch (e) {

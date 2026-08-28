@@ -47,6 +47,9 @@ export interface Sequence {
   send_now: boolean;
   hold_reason: string | null;
   is_test: boolean;
+  // which template this was drafted from; the star (promote) writes back
+  // here. Null = predates migration 0015, treated as the default template.
+  template_id?: string | null;
   created_at: string;
   updated_at: string;
   steps: SequenceStep[];
@@ -65,11 +68,26 @@ export interface SequenceEvent {
 
 export interface SequenceTemplateStep {
   id: string;
+  // null only before migration 0015, when the single unnamed template
+  // had no parent row to point at
+  template_id: string | null;
   position: number;
   title: string;
   subject: string | null;
   body: string;
   wait_days: number;
+}
+
+// A named template: an ordered arc of draft emails new sequences copy
+// from. Exactly one is the default, which the New sequence form
+// preselects. Before migration 0015 runs there is a single
+// pseudo-template with id "" wrapping the old unnamed rows.
+export interface SequenceTemplate {
+  id: string;
+  name: string;
+  description: string;
+  is_default: boolean;
+  steps: SequenceTemplateStep[];
 }
 
 // Fields the UI may write directly on a sequence. Status changes go
@@ -448,28 +466,48 @@ export async function sendStats(): Promise<SendStats> {
   };
 }
 
+// All templates with their steps. Before migration 0015 the
+// crm_templates table does not exist; the old unnamed rows come back as
+// one pseudo-template with id "" so the board keeps working.
+export async function listTemplates(): Promise<SequenceTemplate[]> {
+  const sb = supabase();
+  const stepRes = await sb
+    .from("crm_sequence_templates")
+    .select("*")
+    .order("position", { ascending: true });
+  if (stepRes.error) throw new Error(stepRes.error.message);
+  const steps = stepRes.data ?? [];
+  const tplRes = await sb
+    .from("crm_templates")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (tplRes.error) {
+    return [{ id: "", name: "Default", description: "", is_default: true, steps }];
+  }
+  return (tplRes.data ?? []).map((t) => ({
+    ...t,
+    steps: steps.filter((s) => s.template_id === t.id),
+  }));
+}
+
 export async function listSequences(opts?: { slim?: boolean }): Promise<{
   sequences: Sequence[];
-  templates: SequenceTemplateStep[];
+  templates: SequenceTemplate[];
   facts: SequenceFact[];
   no_send_days: NoSendDay[];
   send_stats: SendStats;
 }> {
   const sb = supabase();
-  const [seqRes, stepRes, tplRes] = await Promise.all([
+  const [seqRes, stepRes, templates] = await Promise.all([
     sb.from("crm_sequences").select("*").order("created_at", { ascending: false }),
     sb
       .from("crm_sequence_steps")
       .select("*")
       .order("position", { ascending: true }),
-    sb
-      .from("crm_sequence_templates")
-      .select("*")
-      .order("position", { ascending: true }),
+    listTemplates(),
   ]);
   if (seqRes.error) throw new Error(seqRes.error.message);
   if (stepRes.error) throw new Error(stepRes.error.message);
-  if (tplRes.error) throw new Error(tplRes.error.message);
 
   const byId = new Map<string, Sequence>();
   for (const s of seqRes.data ?? []) {
@@ -506,7 +544,7 @@ export async function listSequences(opts?: { slim?: boolean }): Promise<{
 
   return {
     sequences: [...byId.values()],
-    templates: tplRes.data ?? [],
+    templates,
     // empty until migration 0011 runs; the board treats that as "no facts"
     facts: await listFacts(),
     no_send_days: await listNoSendDays(),
@@ -537,19 +575,24 @@ export async function getSequence(id: string): Promise<Sequence | null> {
   return out;
 }
 
-// Create a new pending sequence from the current template.
+// Create a new pending sequence from a template: the named one when
+// template_id is given, the default otherwise.
 export async function createSequenceFromTemplate(input: {
   name: string;
   email: string;
   firm?: string | null;
   background?: string | null;
+  template_id?: string | null;
 }): Promise<Sequence> {
   const sb = supabase();
-  const tplRes = await sb
-    .from("crm_sequence_templates")
-    .select("*")
-    .order("position", { ascending: true });
-  if (tplRes.error) throw new Error(tplRes.error.message);
+  const templates = await listTemplates();
+  const tpl = input.template_id
+    ? templates.find((t) => t.id === input.template_id)
+    : (templates.find((t) => t.is_default) ?? templates[0]);
+  if (!tpl) throw new SequenceError("no such template", 400);
+  if (!tpl.steps.length) {
+    throw new SequenceError(`template "${tpl.name}" has no emails`, 400);
+  }
 
   const ins = await sb
     .from("crm_sequences")
@@ -558,13 +601,15 @@ export async function createSequenceFromTemplate(input: {
       email: input.email.trim().toLowerCase(),
       firm: input.firm?.trim() || null,
       background: input.background?.trim() || null,
+      // pre-0015 the pseudo-template has id "" and the column is absent
+      ...(tpl.id ? { template_id: tpl.id } : {}),
     })
     .select("*")
     .single();
   if (ins.error) throw new Error(ins.error.message);
 
   const first = input.name.trim().split(/\s+/)[0] ?? "";
-  const steps = (tplRes.data ?? []).map((t) => ({
+  const steps = tpl.steps.map((t) => ({
     sequence_id: ins.data.id,
     position: t.position,
     title: t.title,
@@ -578,7 +623,7 @@ export async function createSequenceFromTemplate(input: {
 
   await logEvent(ins.data.id, {
     action: "created",
-    detail: `${steps.length} emails drafted from the template for ${ins.data.email}`,
+    detail: `${steps.length} emails drafted from the "${tpl.name}" template for ${ins.data.email}`,
   });
 
   return {
