@@ -12,6 +12,13 @@ import type {
   SequenceTemplate,
 } from "@/lib/sequences";
 
+// Today in ET as YYYY-MM-DD, comparable to a start_date string.
+function todayET(): string {
+  return new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
+}
+
 function fmtStamp(v: string): string {
   const d = new Date(v);
   const date = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
@@ -1308,6 +1315,9 @@ export default function SequencesView() {
                     <span className={`chip status st-${seq.status}`}>
                       {chipText(seq)}
                       {seq.send_now ? " · send queued" : ""}
+                      {seq.start_date && seq.start_date > todayET()
+                        ? ` · starts ${seq.start_date.slice(5, 7)}/${seq.start_date.slice(8, 10)}`
+                        : ""}
                     </span>
                   </div>
                   {seq.firm && <p className="firmline">{seq.firm}</p>}
@@ -1315,6 +1325,39 @@ export default function SequencesView() {
                     {seq.email}
                     {seq.gmail_thread_id ? " · thread pinned" : ""}
                   </p>
+
+                  {["pending", "approved", "held", "active"].includes(
+                    seq.status,
+                  ) && (
+                    <div
+                      className="startline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <label>
+                        Start date
+                        <input
+                          type="date"
+                          value={seq.start_date ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value || null;
+                            setSequences((prev) =>
+                              prev.map((x) =>
+                                x.id === seq.id ? { ...x, start_date: v } : x,
+                              ),
+                            );
+                            save(`start:${seq.id}`, `/api/sequences/${seq.id}`, {
+                              start_date: v,
+                            });
+                          }}
+                        />
+                      </label>
+                      <span className="start-hint">
+                        {seq.start_date
+                          ? "nothing sends before this day; clear for auto"
+                          : "auto: first send goes out on the next run after approval"}
+                      </span>
+                    </div>
+                  )}
 
                   {seq.status === "replied" && (
                     <div className="repliednote">

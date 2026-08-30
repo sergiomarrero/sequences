@@ -82,6 +82,23 @@ export async function PATCH(
           typeof body[f] === "string" ? body[f].trim() || null : null;
       }
     }
+    // Earliest send day. Blank = auto: the first send goes out on the next
+    // run after approval, exactly as before this field existed. Set, the
+    // scheduled run sends nothing for this sequence before that day
+    // (explicit send_now and direct asks stay exempt).
+    if ("start_date" in body) {
+      const v = body.start_date;
+      if (v === null || v === "") {
+        update.start_date = null;
+      } else if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+        update.start_date = v;
+      } else {
+        return NextResponse.json(
+          { error: "start_date must be YYYY-MM-DD or null" },
+          { status: 400 },
+        );
+      }
+    }
     // Status is settable by hand from the board, not just by the run: the
     // one-tap buttons cover the common path, this covers everything else
     // (marking a reply that came in elsewhere, filing something away,
