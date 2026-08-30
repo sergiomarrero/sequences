@@ -144,6 +144,24 @@ export async function PATCH(
       }
       if ("send_now" in body) update.send_now = !!body.send_now;
       if ("is_test" in body) update.is_test = !!body.is_test;
+      // Correcting a recipient address (a wrong domain in a source sheet,
+      // or a found direct email replacing a generic info@ inbox). Sync
+      // only, and refused once the intro is out: a mid-thread address
+      // change would split the conversation.
+      if ("email" in body) {
+        const e =
+          typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) {
+          return NextResponse.json({ error: "invalid email" }, { status: 400 });
+        }
+        if (await sequenceHasStarted(id)) {
+          return NextResponse.json(
+            { error: "this sequence has already sent on a thread; changing the address now would split the conversation" },
+            { status: 409 },
+          );
+        }
+        update.email = e;
+      }
     }
 
     if (!Object.keys(update).length) {
