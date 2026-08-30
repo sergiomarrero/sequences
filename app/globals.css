@@ -2536,3 +2536,30 @@ select.status.s-bounced {
   gap: 8px;
   margin: 4px 0 10px;
 }
+
+/* Per-sequence start date: a small date field with the auto/no-sends hint. */
+.sdesk .startline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 8px;
+}
+.sdesk .startline label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--muted, var(--txt));
+}
+.sdesk .startline input[type="date"] {
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.sdesk .start-hint {
+  font-size: 0.78rem;
+  opacity: 0.75;
+}

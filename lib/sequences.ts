@@ -50,6 +50,10 @@ export interface Sequence {
   // which template this was drafted from; the star (promote) writes back
   // here. Null = predates migration 0015, treated as the default template.
   template_id?: string | null;
+  // earliest send day (YYYY-MM-DD). Null/absent = auto: first send goes
+  // out on the next run after approval. The scheduled run sends nothing
+  // for this sequence before this day; explicit sends are exempt.
+  start_date?: string | null;
   created_at: string;
   updated_at: string;
   steps: SequenceStep[];
