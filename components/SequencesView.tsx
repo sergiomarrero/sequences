@@ -1860,6 +1860,22 @@ export default function SequencesView() {
                       const isOpen = runExpanded.has(seq.id);
                       const sent = seq.steps.filter((s) => s.sent_at).length;
                       const last = lastSentAt(seq);
+                      // Two different things can be wrong with one sequence
+                      // and they are not the same job: the hold is what
+                      // stops the next email, a QA flag is a defect the
+                      // sweep found further down the arc. Show both, each
+                      // saying which step it is about.
+                      const notes: { tag: string; text: string }[] = [];
+                      if (next.detail)
+                        notes.push({ tag: "Fix", text: next.detail });
+                      for (const f of openQaFlags(seq)) {
+                        notes.push({
+                          tag: "QA",
+                          text: /^step\s*\d+\s*:/i.test(f.detail)
+                            ? f.detail
+                            : `Step ${f.pos}: ${f.detail}`,
+                        });
+                      }
                       return (
                         <Fragment key={seq.id}>
                           <tr
@@ -1913,28 +1929,31 @@ export default function SequencesView() {
                               {last ? fmtDate(last) : "\u2014"}
                             </td>
                           </tr>
-                          {/* The chip says a card is stuck; this says what
-                              to fix. It gets its own full-width line rather
-                              than living under the chip, because a hold
-                              reason is a sentence and the Next column
-                              clipped it mid-word. Hidden once the row is
-                              open, where the card shows the same text. */}
-                          {next.detail && !isOpen && (
-                            <tr
-                              className="why-row"
-                              onClick={() => {
-                                if (!runExpanded.has(seq.id)) hydrate(seq.id);
-                                setRunExpanded((prev) =>
-                                  new Set(prev).add(seq.id),
-                                );
-                              }}
-                            >
-                              <td colSpan={5}>
-                                <span className="why-tag">Fix</span>
-                                {next.detail}
-                              </td>
-                            </tr>
-                          )}
+                          {/* The chip says a card is stuck; these say what
+                              is actually wrong. They get their own
+                              full-width lines rather than living under the
+                              chip, because each is a sentence and the Next
+                              column clipped it mid-word. Hidden once the
+                              row is open, where the card shows the same
+                              text against the step it belongs to. */}
+                          {!isOpen &&
+                            notes.map((n) => (
+                              <tr
+                                className={`why-row w-${n.tag.toLowerCase()}`}
+                                key={n.tag + n.text}
+                                onClick={() => {
+                                  if (!runExpanded.has(seq.id)) hydrate(seq.id);
+                                  setRunExpanded((prev) =>
+                                    new Set(prev).add(seq.id),
+                                  );
+                                }}
+                              >
+                                <td colSpan={5}>
+                                  <span className="why-tag">{n.tag}</span>
+                                  {n.text}
+                                </td>
+                              </tr>
+                            ))}
                           {isOpen && (
                             <tr className="arch-detail">
                               <td colSpan={5}>{renderCard(seq)}</td>
