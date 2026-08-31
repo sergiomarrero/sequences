@@ -272,6 +272,12 @@ function nextAction(
   label: string;
   tone: NextTone;
   rank: number;
+  // The specific thing that is wrong, in Sergio's words or the mailman's:
+  // the typo to fix, or the blanks to fill. "Needs input \u00b7 step 1" tells him
+  // a card is stuck; this tells him what to type. Undefined when there is
+  // nothing to quote, a checkpoint being the usual case: a checkpoint is an
+  // instruction he left himself, not a defect.
+  detail?: string;
 } {
   if (seq.status === "stopped") return { label: "Stopped", tone: "idle", rank: 9 };
   const next = firstUnsent(seq);
@@ -280,12 +286,19 @@ function nextAction(
   if (seq.status === "held" || slots.length) {
     const onlyGate =
       slots.length > 0 && slots.every((x) => x === CHECKPOINT_MARKER);
+    const realSlots = slots.filter((x) => x !== CHECKPOINT_MARKER);
     return {
       label: onlyGate
         ? `\u2691 Review \u00b7 step ${next.position}`
         : `Needs input \u00b7 step ${next.position}`,
       tone: "needs",
       rank: 0,
+      // hold_reason is the richer of the two (the mailman writes the defect
+      // and the fix into it), so prefer it and fall back to the raw slots.
+      detail: onlyGate
+        ? undefined
+        : (seq.hold_reason ??
+          (realSlots.length ? realSlots.join(" \u00b7 ") : undefined)),
     };
   }
   if (seq.send_now) {
@@ -1424,15 +1437,20 @@ export default function SequencesView() {
                     </div>
                   )}
 
-                  {seq.hold_reason &&
-                    seq.status === "held" &&
-                    blockedSlots.length > 0 && (
-                      <div className="holdnote">{seq.hold_reason}</div>
-                    )}
+                  {/* Always show the reason while the sequence is held. It
+                      used to be gated on there being [slots] left, which
+                      hid every prose hold: a typo is not a slot, so those
+                      cards showed the reason nowhere and then claimed to be
+                      ready. The reason is the only place the defect and its
+                      fix are written down. */}
+                  {seq.hold_reason && seq.status === "held" && (
+                    <div className="holdnote">{seq.hold_reason}</div>
+                  )}
                   {seq.status === "held" && blockedSlots.length === 0 && (
                     <div className="readynote">
-                      Filled in. Step {nextPos} is ready; send it now or let
-                      the next morning run take it.
+                      {seq.hold_reason
+                        ? `No blanks left in step ${nextPos}. Once the note above is fixed, send it now or let the next morning run take it.`
+                        : `Filled in. Step ${nextPos} is ready; send it now or let the next morning run take it.`}
                     </div>
                   )}
 
@@ -1895,6 +1913,28 @@ export default function SequencesView() {
                               {last ? fmtDate(last) : "\u2014"}
                             </td>
                           </tr>
+                          {/* The chip says a card is stuck; this says what
+                              to fix. It gets its own full-width line rather
+                              than living under the chip, because a hold
+                              reason is a sentence and the Next column
+                              clipped it mid-word. Hidden once the row is
+                              open, where the card shows the same text. */}
+                          {next.detail && !isOpen && (
+                            <tr
+                              className="why-row"
+                              onClick={() => {
+                                if (!runExpanded.has(seq.id)) hydrate(seq.id);
+                                setRunExpanded((prev) =>
+                                  new Set(prev).add(seq.id),
+                                );
+                              }}
+                            >
+                              <td colSpan={5}>
+                                <span className="why-tag">Fix</span>
+                                {next.detail}
+                              </td>
+                            </tr>
+                          )}
                           {isOpen && (
                             <tr className="arch-detail">
                               <td colSpan={5}>{renderCard(seq)}</td>

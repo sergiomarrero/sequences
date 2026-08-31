@@ -2172,6 +2172,33 @@ select.status.s-bounced {
   overflow: visible;
   text-overflow: clip;
 }
+/* The concrete defect, on its own full-width line under the row: what to
+   fix, not just that something needs fixing. It has to beat the nowrap +
+   ellipsis on `.run-table td` above, because a hold reason is a sentence
+   and clipping it mid-word loses the half that says what to change. */
+.sdesk .run-table tbody tr.why-row > td {
+  padding: 0 0.7rem 0.5rem 2.1rem;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+.sdesk .run-table tbody tr.why-row .why-tag {
+  display: inline-block;
+  margin-right: 0.45rem;
+  padding: 0.02rem 0.34rem;
+  border: 1px solid var(--warn-border);
+  border-radius: 0.25rem;
+  color: var(--warn);
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
 .sdesk .run-table td[data-label="Name"] {
   font-weight: 550;
 }
@@ -2206,7 +2233,7 @@ select.status.s-bounced {
   .sdesk .run-table td::before {
     display: none;
   }
-  .sdesk .run-table tbody tr:not(.arch-detail) {
+  .sdesk .run-table tbody tr:not(.arch-detail):not(.why-row) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -2214,6 +2241,17 @@ select.status.s-bounced {
     row-gap: 0.25rem;
     margin-bottom: 0.45rem;
     padding: 0.6rem 0.75rem;
+  }
+  /* the reason belongs to the row above it, so it keeps that row's
+     bottom margin and stays a plain block, not a two-column grid */
+  .sdesk .run-table tbody tr.why-row {
+    display: block;
+    margin: -0.45rem 0 0.45rem;
+    border-left: 3px solid var(--warn);
+  }
+  .sdesk .run-table tbody tr.why-row > td {
+    padding: 0 0.75rem 0.6rem;
+    box-shadow: none;
   }
   .sdesk .run-table td {
     display: block;
