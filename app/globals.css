@@ -2199,6 +2199,16 @@ select.status.s-bounced {
   text-transform: uppercase;
   vertical-align: 1px;
 }
+/* A QA flag is a different job from a hold: it is a defect further down the
+   arc, not the thing stopping the next email. It carries the sweep's red so
+   the two never read as the same item, matching the "Needs you" strip. */
+.sdesk .run-table tbody tr.why-row.w-qa > td {
+  box-shadow: inset 3px 0 0 var(--danger-border);
+}
+.sdesk .run-table tbody tr.why-row.w-qa .why-tag {
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
 .sdesk .run-table td[data-label="Name"] {
   font-weight: 550;
 }
@@ -2416,14 +2426,26 @@ select.status.s-bounced {
   font-weight: 600;
   color: var(--fg);
 }
+/* This text is the whole point of the row: the typo to fix, the flag to
+   read. It was nowrap + ellipsis, which cut every reason off at the width
+   of the strip and turned the one useful sentence into "…". It wraps now,
+   on every width, not just the phone. */
 .sdesk .ny-what {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 0.85rem;
   color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* wrapping makes a row taller than one line, so the tag and the name sit
+   at its top rather than floating on a shared baseline */
+.sdesk .ny-item {
+  align-items: flex-start;
+}
+.sdesk .ny-kind,
+.sdesk .ny-who {
+  padding-top: 0.05rem;
 }
 
 @media (max-width: 720px) {
@@ -2435,7 +2457,6 @@ select.status.s-bounced {
   }
   .sdesk .ny-what {
     flex-basis: 100%;
-    white-space: normal;
   }
 }
 

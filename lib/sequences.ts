@@ -326,10 +326,28 @@ export function holdReasonFor(position: number, slots: string[]): string {
   }`.slice(0, 500);
 }
 
+// Which holds this function is allowed to lift. It can only see slots, so it
+// may only lift a hold that slots caused: one whose reason holdReasonFor
+// wrote, or a legacy hold carrying no reason at all. The mailman also holds
+// on prose defects (a typo, an unfinished sentence, a missing period), and
+// those leave no slot behind, so "no slots" is not evidence they are fixed.
+// Lifting them on the strength of an unrelated edit is how a sequence held
+// for a defect this morning went back to approved with the defect intact.
+export function isSlotHoldReason(reason: string | null | undefined): boolean {
+  if (!reason) return true;
+  return /^Step \d+ (needs input:|is checkpointed:)/.test(reason);
+}
+
 // Editing a step can clear the very slots a sequence is held on. Re-read the
 // next unsent step and lift the hold as soon as nothing is missing, so the
 // board never keeps telling the user to fill in text they already filled in.
-export async function refreshHoldState(sequenceId: string): Promise<void> {
+// `editedPosition` is the step the caller just changed, when there is one.
+// It is what distinguishes "he rewrote the step that is held" from "he
+// touched some other step and this one is untouched".
+export async function refreshHoldState(
+  sequenceId: string,
+  editedPosition?: number | null,
+): Promise<void> {
   const sb = supabase();
   const cur = await sb
     .from("crm_sequences")
@@ -342,12 +360,18 @@ export async function refreshHoldState(sequenceId: string): Promise<void> {
   const slots = next ? unresolvedSlots(next, await factsMap()) : [];
   const update: Record<string, unknown> = {};
 
+  // A prose hold has no slot to disappear, so only an edit to the held step
+  // itself is evidence it was addressed; anything else leaves it standing.
+  // With no step left to hold, the reason is stale whatever kind it was.
+  const proseHoldAddressed =
+    !next || (editedPosition != null && editedPosition === next.position);
+
   if (slots.length) {
     if (cur.data.status === "held") {
       const reason = holdReasonFor(next!.position, slots);
       if (reason !== cur.data.hold_reason) update.hold_reason = reason;
     }
-  } else {
+  } else if (isSlotHoldReason(cur.data.hold_reason) || proseHoldAddressed) {
     if (cur.data.hold_reason) update.hold_reason = null;
     if (cur.data.status === "held") {
       const sent = await sb
@@ -363,6 +387,8 @@ export async function refreshHoldState(sequenceId: string): Promise<void> {
           : "approved";
     }
   }
+  // else: a prose hold with no slots left. Nothing to do; only a human
+  // reading the reason can decide the defect is actually fixed.
   if (!Object.keys(update).length) return;
   const res = await sb.from("crm_sequences").update(update).eq("id", sequenceId);
   if (res.error) throw new Error(res.error.message);

@@ -158,8 +158,9 @@ export async function PATCH(
     }
 
     // an edit may have resolved (or restated) the slots this sequence is held
-    // on; keep the hold in step with the text
-    await refreshHoldState(id);
+    // on; keep the hold in step with the text. The position matters: a prose
+    // hold only lifts when the held step itself is the one that was rewritten.
+    await refreshHoldState(id, res.data.position);
     return NextResponse.json(res.data);
   } catch (e) {
     // a refused action is the caller's problem, not a server fault
