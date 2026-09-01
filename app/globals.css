@@ -2199,6 +2199,18 @@ select.status.s-bounced {
   text-transform: uppercase;
   vertical-align: 1px;
 }
+/* The expanded row hosts a whole card, and `white-space` inherits: without
+   this reset every paragraph in it (the hold note, the ready note, the
+   background, the notes) ran off the right edge on one clipped line,
+   because `.run-table td` above is nowrap + ellipsis for the board rows.
+   Only the step bodies escaped, and only because a textarea sets its own
+   wrapping. The archive table never had this: its cells are not nowrap. */
+.sdesk .run-table tbody tr.arch-detail > td {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 /* A QA flag is a different job from a hold: it is a defect further down the
    arc, not the thing stopping the next email. It carries the sweep's red so
    the two never read as the same item, matching the "Needs you" strip. */
