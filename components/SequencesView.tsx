@@ -344,18 +344,16 @@ function openQaFlags(
   return flags.sort((a, b) => a.pos - b.pos);
 }
 
-// Sequences that are sending or paused mid-flight. These are the ones that
-// pile up, so they get the dense board rather than a stack of cards.
-const RUNNING_STATUSES: SequenceStatus[] = [
-  "approved",
-  "active",
-  "held",
-  "stopped",
-];
+// Sequences the run can act on. These are the ones that pile up, so they
+// get the dense board rather than a stack of cards.
+const RUNNING_STATUSES: SequenceStatus[] = ["approved", "active", "held"];
+
+// Deliberately parked: saved for later or stopped mid-flight. Not action,
+// not finished either, so they get their own section between the board and
+// the archive rather than crowding either.
+const SET_ASIDE_STATUSES: SequenceStatus[] = ["saved", "stopped"];
 
 // Finished states: the conversation is over. These live in the archive.
-// "stopped" is deliberately not here: a stopped sequence is paused work you
-// may well resume, so it stays on the board where you can see it.
 const CLOSED_STATUSES: SequenceStatus[] = ["replied", "done", "archived"];
 
 const STATUS_LABEL: Record<SequenceStatus, string> = {
@@ -878,9 +876,27 @@ export default function SequencesView() {
     [ordered],
   );
   // Drafts still need reading, so they stay as cards. Running sequences are
-  // the ones that pile up; they get the board.
+  // the ones that pile up; they get the board. Parked work goes to its own
+  // section so the top of the page is only what needs action.
   const drafts = useMemo(
-    () => live.filter((s) => !RUNNING_STATUSES.includes(s.status)),
+    () =>
+      live.filter(
+        (s) =>
+          !RUNNING_STATUSES.includes(s.status) &&
+          !SET_ASIDE_STATUSES.includes(s.status),
+      ),
+    [live],
+  );
+  const setAside = useMemo(
+    () =>
+      live
+        .filter((s) => SET_ASIDE_STATUSES.includes(s.status))
+        .sort(
+          (a, b) =>
+            SET_ASIDE_STATUSES.indexOf(a.status) -
+              SET_ASIDE_STATUSES.indexOf(b.status) ||
+            b.updated_at.localeCompare(a.updated_at),
+        ),
     [live],
   );
   const factsByKey = useMemo(() => {
@@ -966,7 +982,9 @@ export default function SequencesView() {
       }
     }
     for (const s of ordered) {
+      // parked work is parked: its QA flags wait until it comes back
       if (CLOSED_STATUSES.includes(s.status)) continue;
+      if (SET_ASIDE_STATUSES.includes(s.status)) continue;
       const flags = openQaFlags(s);
       if (flags.length) {
         out.push({
@@ -1968,6 +1986,24 @@ export default function SequencesView() {
             )
           )}
         </section>
+
+        {setAside.length > 0 && (
+          <section className="zone set-aside-zone">
+            <h2>Set aside</h2>
+            <p className="edit-hint">
+              Saved for later or stopped. Nothing here sends or asks for
+              input; switch one back to Pending or Active when it is time.
+            </p>
+            <div className="listbar">
+              <span>
+                {setAside.length} set aside
+              </span>
+            </div>
+            <div className="list">
+              {setAside.map((seq) => renderCard(seq))}
+            </div>
+          </section>
+        )}
 
         <section className="zone archive-zone">
           <h2 className="zone-toggle" onClick={() => setArchOpen((v) => !v)}>
