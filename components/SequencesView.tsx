@@ -899,6 +899,12 @@ export default function SequencesView() {
         ),
     [live],
   );
+  // Whether the Drafts section itself has anything open, which is what its
+  // expand/collapse button reports on. Cards open elsewhere do not count.
+  const draftsOpen = useMemo(
+    () => drafts.some((s) => openCards.has(s.id)),
+    [drafts, openCards],
+  );
   const factsByKey = useMemo(() => {
     const m: Record<string, string> = {};
     for (const f of facts) m[f.key] = f.value;
@@ -1764,15 +1770,21 @@ export default function SequencesView() {
               <button
                 className="quiet"
                 onClick={() => {
-                  if (!openCards.size) drafts.forEach((s) => hydrate(s.id));
-                  setOpenCards(
-                    openCards.size
-                      ? new Set()
-                      : new Set(drafts.map((s) => s.id)),
-                  );
+                  if (!draftsOpen) drafts.forEach((s) => hydrate(s.id));
+                  // Only this section's cards: openCards is shared with Set
+                  // aside and the board, and collapsing all of them from here
+                  // closes cards the user opened somewhere else.
+                  setOpenCards((prev) => {
+                    const next = new Set(prev);
+                    for (const s of drafts) {
+                      if (draftsOpen) next.delete(s.id);
+                      else next.add(s.id);
+                    }
+                    return next;
+                  });
                 }}
               >
-                {openCards.size ? "Collapse all" : "Expand all"}
+                {draftsOpen ? "Collapse all" : "Expand all"}
               </button>
             </div>
           )}
