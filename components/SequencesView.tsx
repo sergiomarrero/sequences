@@ -783,6 +783,12 @@ export default function SequencesView() {
   const [runQuery, setRunQuery] = useState("");
   const [runExpanded, setRunExpanded] = useState<Set<string>>(new Set());
   const [runCards, setRunCards] = useState(false);
+  // Drafts and Set aside open as compact tables too, one row per sequence,
+  // a row expanding into its card. Card view stays a tap away.
+  const [draftExpanded, setDraftExpanded] = useState<Set<string>>(new Set());
+  const [draftCards, setDraftCards] = useState(false);
+  const [asideExpanded, setAsideExpanded] = useState<Set<string>>(new Set());
+  const [asideCards, setAsideCards] = useState(false);
 
   const [archQuery, setArchQuery] = useState("");
   const [archStatus, setArchStatus] = useState<"all" | SequenceStatus>("all");
@@ -1040,7 +1046,11 @@ export default function SequencesView() {
         setRunExpanded((prev) => new Set(prev).add(seq.id));
       }
       setOpen(seq.id, true);
+    } else if (SET_ASIDE_STATUSES.includes(seq.status)) {
+      if (!asideCards) setAsideExpanded((prev) => new Set(prev).add(seq.id));
+      setOpen(seq.id, true);
     } else {
+      if (!draftCards) setDraftExpanded((prev) => new Set(prev).add(seq.id));
       setOpen(seq.id, true);
     }
     setTimeout(() => {
@@ -1323,6 +1333,82 @@ export default function SequencesView() {
       else next.delete(id);
       return next;
     });
+  }
+
+  // A compact table for a stack of sequences that are not on the board:
+  // name, contact, status, how far along, and a date. A row opens into the
+  // full card, which also opens itself so one tap shows everything.
+  function renderStackTable(
+    rows: Sequence[],
+    expanded: Set<string>,
+    setExpanded: React.Dispatch<React.SetStateAction<Set<string>>>,
+    dateLabel: string,
+    dateOf: (seq: Sequence) => string | null,
+  ) {
+    return (
+      <div className="arch-wrap">
+        <table className="arch-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Contact</th>
+              <th>Status</th>
+              <th className="num">Steps</th>
+              <th>{dateLabel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((seq) => {
+              const isOpen = expanded.has(seq.id);
+              const sent = seq.steps.filter((s) => s.sent_at).length;
+              const d = dateOf(seq);
+              return (
+                <Fragment key={seq.id}>
+                  <tr
+                    className={isOpen ? "open" : ""}
+                    onClick={() => {
+                      const opening = !expanded.has(seq.id);
+                      if (opening) hydrate(seq.id);
+                      setExpanded((prev) => {
+                        const nx = new Set(prev);
+                        if (nx.has(seq.id)) nx.delete(seq.id);
+                        else nx.add(seq.id);
+                        return nx;
+                      });
+                      setOpen(seq.id, opening);
+                    }}
+                  >
+                    <td data-label="Name">
+                      <span className="caret">{isOpen ? "\u25be" : "\u25b8"}</span>
+                      {seq.name}
+                      {seq.is_test && <span className="test-tag">TEST</span>}
+                    </td>
+                    <td data-label="Contact">
+                      <span className="arch-email">{seq.email}</span>
+                      {seq.firm ? ` \u00b7 ${seq.firm}` : ""}
+                    </td>
+                    <td data-label="Status">
+                      <span className={`chip status st-${seq.status}`}>
+                        {STATUS_LABEL[seq.status]}
+                      </span>
+                    </td>
+                    <td className="num" data-label="Steps">
+                      {sent}/{seq.steps.length}
+                    </td>
+                    <td data-label={dateLabel}>{d ? fmtDate(d) : "\u2014"}</td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="arch-detail">
+                      <td colSpan={5}>{renderCard(seq)}</td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   // One sequence card. Used by the live list and by an expanded archive row,
@@ -1767,13 +1853,17 @@ export default function SequencesView() {
               <span>
                 {drafts.length} awaiting review
               </span>
+              <button className="quiet" onClick={() => setDraftCards((v) => !v)}>
+                {draftCards ? "Table view" : "Card view"}
+              </button>
               <button
                 className="quiet"
                 onClick={() => {
                   if (!draftsOpen) drafts.forEach((s) => hydrate(s.id));
                   // Only this section's cards: openCards is shared with Set
                   // aside and the board, and collapsing all of them from here
-                  // closes cards the user opened somewhere else.
+                  // closes cards the user opened somewhere else. In table
+                  // view the rows expand and collapse with the cards.
                   setOpenCards((prev) => {
                     const next = new Set(prev);
                     for (const s of drafts) {
@@ -1782,6 +1872,9 @@ export default function SequencesView() {
                     }
                     return next;
                   });
+                  setDraftExpanded(
+                    draftsOpen ? new Set() : new Set(drafts.map((s) => s.id)),
+                  );
                 }}
               >
                 {draftsOpen ? "Collapse all" : "Expand all"}
@@ -1794,9 +1887,18 @@ export default function SequencesView() {
             </p>
           )}
 
-          <div className="list">
-            {drafts.map((seq) => renderCard(seq))}
-          </div>
+          {draftCards ? (
+            <div className="list">{drafts.map((seq) => renderCard(seq))}</div>
+          ) : (
+            drafts.length > 0 &&
+            renderStackTable(
+              drafts,
+              draftExpanded,
+              setDraftExpanded,
+              "Added",
+              (seq) => seq.created_at,
+            )
+          )}
         </section>
 
         <section className="zone">
@@ -2010,10 +2112,21 @@ export default function SequencesView() {
               <span>
                 {setAside.length} set aside
               </span>
+              <button className="quiet" onClick={() => setAsideCards((v) => !v)}>
+                {asideCards ? "Table view" : "Card view"}
+              </button>
             </div>
-            <div className="list">
-              {setAside.map((seq) => renderCard(seq))}
-            </div>
+            {asideCards ? (
+              <div className="list">{setAside.map((seq) => renderCard(seq))}</div>
+            ) : (
+              renderStackTable(
+                setAside,
+                asideExpanded,
+                setAsideExpanded,
+                "Updated",
+                (seq) => seq.updated_at,
+              )
+            )}
           </section>
         )}
 
