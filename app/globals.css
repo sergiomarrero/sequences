@@ -917,7 +917,7 @@ select.status.s-bounced {
   color: var(--muted);
 }
 .sdesk .wrap {
-  max-width: 44rem;
+  max-width: 64rem;
   margin: 0 auto;
   padding: 2rem 1rem 5rem;
 }
@@ -979,6 +979,39 @@ select.status.s-bounced {
 .sdesk .list {
   display: grid;
   gap: 1.25rem;
+}
+
+/* one control idiom for text and date inputs that are not part of a
+   step editor: same face as the archive search and the form fields */
+.sdesk .ctl {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-ctl);
+  background: var(--bg);
+  color: var(--txt);
+  color-scheme: light dark;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.sdesk .ctl::placeholder {
+  color: var(--muted);
+}
+.sdesk .ctl:hover:not(:disabled) {
+  border-color: var(--accent-soft, var(--line));
+}
+.sdesk .ctl:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 18%, transparent);
+}
+.sdesk .ctl-date {
+  cursor: pointer;
+  min-width: 10.5rem;
+}
+.sdesk .ctl-date::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.75;
 }
 
 /* generic button = secondary idiom; variants after */
@@ -1170,6 +1203,30 @@ select.status.s-bounced {
   color: var(--accent);
   font-weight: 700;
   margin-bottom: 0.25rem;
+}
+.sdesk .bg-text {
+  white-space: pre-wrap;
+  max-width: 80ch;
+}
+.sdesk .bg-text.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+.sdesk .bg-more {
+  margin-top: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.sdesk .bg-more:hover {
+  color: var(--blue);
+  border-color: var(--blue);
 }
 
 .sdesk details.seq {
@@ -1383,7 +1440,7 @@ select.status.s-bounced {
   color: var(--txt);
   line-height: 1.6;
   width: 100%;
-  max-width: 58ch;
+  max-width: 76ch;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 0.35rem;
@@ -1469,6 +1526,7 @@ select.status.s-bounced {
   gap: 0.6rem;
 }
 .sdesk .new-form input,
+.sdesk .new-form select,
 .sdesk .new-form textarea {
   font-family: var(--font-sans);
   font-size: 0.9rem;
@@ -2547,27 +2605,62 @@ select.status.s-bounced {
   border-collapse: collapse;
   font-size: 0.83rem;
 }
+.sdesk .mini-table th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0 0.5rem 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.sdesk .mini-table th.num {
+  text-align: right;
+}
 .sdesk .mini-table td {
-  padding: 0.25rem 0.5rem 0.25rem 0;
+  padding: 0.4rem 0.5rem 0.4rem 0;
   border-bottom: 1px solid var(--line);
   color: var(--txt);
+  vertical-align: middle;
+}
+.sdesk .mini-table tr:last-child td {
+  border-bottom: 0;
 }
 .sdesk .mini-table td.num {
   text-align: right;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sdesk .mini-bar {
+  display: block;
+  height: 4px;
+  margin-top: 0.3rem;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.sdesk .mini-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--good);
 }
 .sdesk .ns-add {
-  display: flex;
-  gap: 0.4rem;
-  margin-top: 0.6rem;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.8rem;
 }
-.sdesk .ns-add input[type="date"] {
-  flex: 0 0 auto;
-}
-.sdesk .ns-add input[type="text"] {
-  flex: 1 1 10rem;
+.sdesk .ns-add .ctl {
   min-width: 0;
+}
+@media (max-width: 720px) {
+  .sdesk .ns-add {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 720px) {
   .sdesk .intro-toggle {
@@ -2624,11 +2717,9 @@ select.status.s-bounced {
   color: var(--muted, var(--txt));
 }
 .sdesk .startline input[type="date"] {
-  font: inherit;
   font-size: 0.82rem;
-  padding: 2px 6px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  padding: 0.28rem 0.55rem;
+  min-width: 9.5rem;
 }
 .sdesk .start-hint {
   font-size: 0.78rem;

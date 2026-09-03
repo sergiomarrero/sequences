@@ -163,6 +163,17 @@ function hasSlots(text: string): boolean {
   return /\[[^\]]+\]/.test(text);
 }
 
+// Native date inputs only open their calendar from a small chevron in
+// Safari; a click anywhere in the field should open it, like Chrome does.
+function openPicker(e: React.SyntheticEvent<HTMLInputElement>) {
+  const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+  try {
+    el.showPicker?.();
+  } catch {
+    /* not supported or not a user gesture: typing still works */
+  }
+}
+
 function fmtDate(v: string | null): string {
   if (!v) return "";
   const d = new Date(v);
@@ -382,6 +393,10 @@ function statusOptions(seq: Sequence): SequenceStatus[] {
 // of these puts another automated email in front of someone who wrote back,
 // so it is gated behind an explicit acknowledgement.
 const SENDING_STATUSES: SequenceStatus[] = ["approved", "active", "held"];
+
+// Backgrounds longer than this render clamped until the reader asks for all
+// of it; roughly six lines at the card's width.
+const BG_CLAMP_CHARS = 420;
 
 const STATUS_ORDER: SequenceStatus[] = [
   "held",
@@ -789,6 +804,9 @@ export default function SequencesView() {
   const [draftCards, setDraftCards] = useState(false);
   const [asideExpanded, setAsideExpanded] = useState<Set<string>>(new Set());
   const [asideCards, setAsideCards] = useState(false);
+  // Long backgrounds show clamped to a few lines with a toggle; the block
+  // itself stays open by default, only its height is capped.
+  const [bgOpen, setBgOpen] = useState<Set<string>>(new Set());
 
   const [archQuery, setArchQuery] = useState("");
   const [archStatus, setArchStatus] = useState<"all" | SequenceStatus>("all");
@@ -1460,7 +1478,9 @@ export default function SequencesView() {
                         Start date
                         <input
                           type="date"
+                          className="ctl ctl-date"
                           value={seq.start_date ?? ""}
+                          onClick={openPicker}
                           onChange={(e) => {
                             const v = e.target.value || null;
                             setSequences((prev) =>
@@ -1567,7 +1587,33 @@ export default function SequencesView() {
                   {seq.background && (
                     <div className="bg-block">
                       <span className="lbl">Background used</span>
-                      {seq.background}
+                      <div
+                        className={`bg-text${
+                          seq.background.length > BG_CLAMP_CHARS &&
+                          !bgOpen.has(seq.id)
+                            ? " clamp"
+                            : ""
+                        }`}
+                      >
+                        {seq.background}
+                      </div>
+                      {seq.background.length > BG_CLAMP_CHARS && (
+                        <button
+                          type="button"
+                          className="bg-more"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBgOpen((prev) => {
+                              const nx = new Set(prev);
+                              if (nx.has(seq.id)) nx.delete(seq.id);
+                              else nx.add(seq.id);
+                              return nx;
+                            });
+                          }}
+                        >
+                          {bgOpen.has(seq.id) ? "Show less" : "Show all"}
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -2413,13 +2459,33 @@ export default function SequencesView() {
                     <p className="edit-hint">No sends in the last 14 days.</p>
                   ) : (
                     <table className="mini-table">
+                      <thead>
+                        <tr>
+                          <th>Day</th>
+                          <th className="num">Sent</th>
+                        </tr>
+                      </thead>
                       <tbody>
-                        {sendStats.by_day.map((d) => (
-                          <tr key={d.day}>
-                            <td>{d.day}</td>
-                            <td className="num">{d.sent}</td>
-                          </tr>
-                        ))}
+                        {(() => {
+                          const peak = Math.max(
+                            1,
+                            ...sendStats.by_day.map((d) => d.sent),
+                          );
+                          return sendStats.by_day.map((d) => (
+                            <tr key={d.day}>
+                              <td>
+                                {fmtDate(d.day)}
+                                <span className="mini-bar">
+                                  <span
+                                    className="mini-fill"
+                                    style={{ width: `${(d.sent / peak) * 100}%` }}
+                                  />
+                                </span>
+                              </td>
+                              <td className="num">{d.sent}</td>
+                            </tr>
+                          ));
+                        })()}
                       </tbody>
                     </table>
                   )}
@@ -2433,10 +2499,17 @@ export default function SequencesView() {
                     now and direct asks are exempt.
                   </p>
                   <table className="mini-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Label</th>
+                        <th className="num" aria-label="Remove" />
+                      </tr>
+                    </thead>
                     <tbody>
                       {noSendDays.map((d) => (
                         <tr key={d.day}>
-                          <td>{d.day}</td>
+                          <td>{fmtDate(d.day)}</td>
                           <td>{d.label}</td>
                           <td className="num">
                             <button
@@ -2463,12 +2536,15 @@ export default function SequencesView() {
                   <div className="ns-add">
                     <input
                       type="date"
+                      className="ctl ctl-date"
                       aria-label="New no-send date"
                       value={nsDay}
+                      onClick={openPicker}
                       onChange={(e) => setNsDay(e.target.value)}
                     />
                     <input
                       type="text"
+                      className="ctl"
                       placeholder="Label (e.g. Office closed)"
                       aria-label="Label for the no-send date"
                       value={nsLabel}
